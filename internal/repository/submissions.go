@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kingman4/better-esg/internal/crypto"
+	"github.com/lib/pq"
 )
 
 // Submission represents a row in the submissions table.
@@ -217,6 +218,40 @@ func (r *SubmissionRepo) GetTempCredentials(ctx context.Context, id string) (*Te
 	}
 
 	return &TempCredentials{TempUser: tempUser, TempPassword: tempPass}, nil
+}
+
+// ListByWorkflowStates returns all submissions in the given workflow states that have a core_id.
+// This is an internal query with no org_id filter — used by the background poller.
+func (r *SubmissionRepo) ListByWorkflowStates(ctx context.Context, states []string) ([]Submission, error) {
+	query := `
+		SELECT id, org_id, core_id, fda_center, submission_type, submission_name, submission_protocol,
+		       file_count, total_size_bytes, description, status, workflow_state,
+		       payload_id, upload_file_link, submit_form_link,
+		       created_by, created_at, submitted_at, completed_at, updated_at
+		FROM submissions
+		WHERE workflow_state = ANY($1) AND core_id IS NOT NULL
+		ORDER BY updated_at ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(states))
+	if err != nil {
+		return nil, fmt.Errorf("listing submissions by workflow states: %w", err)
+	}
+	defer rows.Close()
+
+	var submissions []Submission
+	for rows.Next() {
+		var s Submission
+		if err := rows.Scan(
+			&s.ID, &s.OrgID, &s.CoreID, &s.FDACenter, &s.SubmissionType, &s.SubmissionName,
+			&s.SubmissionProtocol, &s.FileCount, &s.TotalSizeBytes, &s.Description,
+			&s.Status, &s.WorkflowState, &s.PayloadID, &s.UploadFileLink, &s.SubmitFormLink,
+			&s.CreatedBy, &s.CreatedAt, &s.SubmittedAt, &s.CompletedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning submission row: %w", err)
+		}
+		submissions = append(submissions, s)
+	}
+	return submissions, rows.Err()
 }
 
 // UpdateFDAFields updates the FDA-specific fields after credential and payload steps.

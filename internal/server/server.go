@@ -1,10 +1,12 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/kingman4/better-esg/internal/database"
 	"github.com/kingman4/better-esg/internal/fdaclient"
@@ -19,7 +21,10 @@ type Server struct {
 	submissions *repository.SubmissionRepo
 	files       *repository.SubmissionFileRepo
 	apiKeys     *repository.APIKeyRepo
+	acks        *repository.AckRepo
 	fda         *fdaclient.Client
+
+	pollerCancel context.CancelFunc
 }
 
 // Config holds the parameters needed to create a Server.
@@ -29,8 +34,9 @@ type Config struct {
 	FDAUploadBaseURL   string
 	FDAClientID        string
 	FDAClientSecret    string
-	FDAEnvironment     string // "prod" or "test"
-	EncryptionKey      []byte // 32 bytes for AES-256-GCM
+	FDAEnvironment     string        // "prod" or "test"
+	EncryptionKey      []byte        // 32 bytes for AES-256-GCM
+	StatusPollInterval time.Duration // how often to poll FDA for in-flight submissions (0 = disabled)
 }
 
 // New creates a new Server, runs migrations, and sets up routes.
@@ -59,6 +65,7 @@ func New(cfg Config) (*Server, error) {
 		submissions: repository.NewSubmissionRepo(db, cfg.EncryptionKey),
 		files:       repository.NewSubmissionFileRepo(db),
 		apiKeys:     repository.NewAPIKeyRepo(db),
+		acks:        repository.NewAckRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -68,6 +75,13 @@ func New(cfg Config) (*Server, error) {
 		}),
 	}
 	s.routes()
+
+	if cfg.StatusPollInterval > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		s.pollerCancel = cancel
+		s.startStatusPoller(ctx, cfg.StatusPollInterval)
+	}
+
 	return s, nil
 }
 
@@ -76,6 +90,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) Close() error {
+	s.stopStatusPoller()
 	return s.db.Close()
 }
 

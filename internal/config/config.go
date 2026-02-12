@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"time"
 )
 
 type Config struct {
@@ -19,6 +20,9 @@ type Config struct {
 
 	// Encryption — 32-byte key for AES-256-GCM (hex-encoded in env var)
 	EncryptionKey []byte
+
+	// Status poller — how often to poll FDA for in-flight submission updates
+	StatusPollInterval time.Duration
 }
 
 func Load() (*Config, error) {
@@ -56,6 +60,15 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("ENCRYPTION_KEY must be 32 bytes (64 hex chars), got %d bytes", len(encKey))
 	}
 
+	pollInterval := 60 * time.Second
+	if v := os.Getenv("STATUS_POLL_INTERVAL"); v != "" {
+		parsed, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("STATUS_POLL_INTERVAL must be a valid Go duration (e.g. 60s, 5m): %w", err)
+		}
+		pollInterval = parsed
+	}
+
 	return &Config{
 		Port:               port,
 		DatabaseURL:        dbURL,
@@ -65,6 +78,7 @@ func Load() (*Config, error) {
 		FDAClientSecret:    os.Getenv("FDA_CLIENT_SECRET"),
 		FDAEnvironment:     fdaEnv,
 		EncryptionKey:      encKey,
+		StatusPollInterval: pollInterval,
 	}, nil
 }
 

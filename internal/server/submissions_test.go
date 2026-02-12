@@ -157,6 +157,7 @@ func newTestServerWithFDA(t *testing.T, fda *fdaclient.Client) *Server {
 		submissions: repository.NewSubmissionRepo(testDB, testEncryptionKey),
 		files:       repository.NewSubmissionFileRepo(testDB),
 		apiKeys:     repository.NewAPIKeyRepo(testDB),
+		acks:        repository.NewAckRepo(testDB),
 		fda:         fda,
 	}
 	s.routes()
