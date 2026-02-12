@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kingman4/better-esg/internal/database"
+	"github.com/kingman4/better-esg/internal/fdaclient"
 	"github.com/kingman4/better-esg/internal/repository"
 	_ "github.com/lib/pq"
 	"github.com/testcontainers/testcontainers-go"
@@ -96,13 +97,22 @@ func seedTestData(t *testing.T, suffix string) (orgID, userID string) {
 	return orgID, userID
 }
 
-// newTestServer creates a Server backed by the shared DB. No container spin-up.
+// newTestServer creates a Server backed by the shared DB with a nil FDA client.
+// Use newTestServerWithFDA for tests that need the FDA workflow.
 func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	return newTestServerWithFDA(t, nil)
+}
+
+// newTestServerWithFDA creates a Server backed by the shared DB
+// with the given FDA client. Pass nil if FDA is not needed.
+func newTestServerWithFDA(t *testing.T, fda *fdaclient.Client) *Server {
 	t.Helper()
 	s := &Server{
 		db:          testDB,
 		router:      http.NewServeMux(),
 		submissions: repository.NewSubmissionRepo(testDB),
+		fda:         fda,
 	}
 	s.routes()
 	return s
@@ -362,5 +372,254 @@ func TestListSubmissions_Pagination(t *testing.T) {
 
 	if len(results) != 2 {
 		t.Errorf("expected 2 results with limit=2, got %d", len(results))
+	}
+}
+
+// --- FDA Workflow Tests ---
+
+// newMockFDAServer creates an httptest.Server that handles OAuth token,
+// credential submission, and payload endpoints.
+func newMockFDAServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+
+		case (r.URL.Path == "/api/esgng/v1/credentials/api/test" ||
+			r.URL.Path == "/api/esgng/v1/credentials/api") && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"core_id":          "CORE-WORKFLOW-123",
+				"temp_user":        "tmp_u",
+				"temp_password":    "tmp_p",
+				"esgngcode":        "ESGNG210",
+				"esgngdescription": "ok",
+			})
+
+		case r.URL.Path == "/rest/forms/v1/fileupload/payload" && r.Method == http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"payloadId": "PL-WORKFLOW-456",
+				"links": map[string]string{
+					"uploadLink": "/rest/forms/v1/fileupload/payload/PL-WORKFLOW-456/file",
+					"submitLink": "/rest/forms/v1/fileupload/payload/PL-WORKFLOW-456/submit",
+				},
+			})
+
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+}
+
+func TestSubmitToFDA_Success(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, userID := seedTestData(t, "workflow-success")
+
+	// Create a draft submission
+	sub, err := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID:              orgID,
+		FDACenter:          "CDER",
+		SubmissionType:     "ANDA",
+		SubmissionName:     "Workflow Test",
+		SubmissionProtocol: "API",
+		FileCount:          1,
+		Description:        "Test workflow",
+		CreatedBy:          userID,
+	})
+	if err != nil {
+		t.Fatalf("creating submission: %v", err)
+	}
+
+	body := map[string]string{
+		"org_id":     orgID,
+		"user_email": "submitter@pharma.com",
+		"company_id": "COMP-1",
+	}
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/submit", sub.ID), bytes.NewReader(b))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp submitToFDAResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.CoreID != "CORE-WORKFLOW-123" {
+		t.Errorf("expected core_id 'CORE-WORKFLOW-123', got %q", resp.CoreID)
+	}
+	if resp.PayloadID != "PL-WORKFLOW-456" {
+		t.Errorf("expected payload_id 'PL-WORKFLOW-456', got %q", resp.PayloadID)
+	}
+	if resp.Status != "payload_obtained" {
+		t.Errorf("expected status 'payload_obtained', got %q", resp.Status)
+	}
+
+	// Verify DB was updated
+	updated, _ := srv.submissions.GetByID(context.Background(), orgID, sub.ID)
+	if !updated.CoreID.Valid || updated.CoreID.String != "CORE-WORKFLOW-123" {
+		t.Errorf("DB core_id not updated: %v", updated.CoreID)
+	}
+	if !updated.PayloadID.Valid || updated.PayloadID.String != "PL-WORKFLOW-456" {
+		t.Errorf("DB payload_id not updated: %v", updated.PayloadID)
+	}
+	if updated.Status != "payload_obtained" {
+		t.Errorf("DB status expected 'payload_obtained', got %q", updated.Status)
+	}
+}
+
+func TestSubmitToFDA_NotDraft(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, userID := seedTestData(t, "workflow-notdraft")
+
+	sub, _ := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID: orgID, SubmissionType: "ANDA", SubmissionName: "Already Submitted",
+		SubmissionProtocol: "API", FileCount: 1, CreatedBy: userID,
+	})
+	// Move out of draft
+	srv.submissions.UpdateStatus(context.Background(), sub.ID, "initiated", "CREDENTIALS_PENDING")
+
+	body := map[string]string{"org_id": orgID, "user_email": "u@x.com", "company_id": "C1"}
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/submit", sub.ID), bytes.NewReader(b))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubmitToFDA_NotFound(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, _ := seedTestData(t, "workflow-notfound")
+
+	body := map[string]string{"org_id": orgID, "user_email": "u@x.com", "company_id": "C1"}
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/submissions/00000000-0000-0000-0000-000000000000/submit", bytes.NewReader(b))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubmitToFDA_MissingFields(t *testing.T) {
+	srv := newTestServer(t)
+
+	body := map[string]string{"org_id": "x"} // missing user_email and company_id
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost,
+		"/api/v1/submissions/some-id/submit", bytes.NewReader(b))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestSubmitToFDA_FDACredentialFailure(t *testing.T) {
+	// FDA server that rejects credential requests
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"esgngcode": "ESGNG400", "esgngdescription": "Bad request",
+		})
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, userID := seedTestData(t, "workflow-credfail")
+
+	sub, _ := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID: orgID, SubmissionType: "ANDA", SubmissionName: "Cred Fail Test",
+		SubmissionProtocol: "API", FileCount: 1, CreatedBy: userID,
+	})
+
+	body := map[string]string{"org_id": orgID, "user_email": "u@x.com", "company_id": "C1"}
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/submit", sub.ID), bytes.NewReader(b))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify DB status was set to failed
+	updated, _ := srv.submissions.GetByID(context.Background(), orgID, sub.ID)
+	if updated.Status != "failed" {
+		t.Errorf("expected status 'failed' after FDA error, got %q", updated.Status)
 	}
 }

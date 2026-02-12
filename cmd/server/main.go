@@ -19,7 +19,14 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	srv, err := server.New(cfg.DatabaseURL)
+	srv, err := server.New(server.Config{
+		DatabaseURL:        cfg.DatabaseURL,
+		FDAExternalBaseURL: cfg.FDAExternalBaseURL,
+		FDAUploadBaseURL:   cfg.FDAUploadBaseURL,
+		FDAClientID:        cfg.FDAClientID,
+		FDAClientSecret:    cfg.FDAClientSecret,
+		FDAEnvironment:     cfg.FDAEnvironment,
+	})
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)
 	}

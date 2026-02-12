@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/kingman4/better-esg/internal/database"
+	"github.com/kingman4/better-esg/internal/fdaclient"
 	"github.com/kingman4/better-esg/internal/repository"
 	_ "github.com/lib/pq"
 )
@@ -16,11 +17,22 @@ type Server struct {
 	db          *sql.DB
 	router      *http.ServeMux
 	submissions *repository.SubmissionRepo
+	fda         *fdaclient.Client
+}
+
+// Config holds the parameters needed to create a Server.
+type Config struct {
+	DatabaseURL        string
+	FDAExternalBaseURL string
+	FDAUploadBaseURL   string
+	FDAClientID        string
+	FDAClientSecret    string
+	FDAEnvironment     string // "prod" or "test"
 }
 
 // New creates a new Server, runs migrations, and sets up routes.
-func New(databaseURL string) (*Server, error) {
-	db, err := sql.Open("postgres", databaseURL)
+func New(cfg Config) (*Server, error) {
+	db, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -33,10 +45,22 @@ func New(databaseURL string) (*Server, error) {
 		return nil, err
 	}
 
+	fdaEnv := fdaclient.EnvTest
+	if cfg.FDAEnvironment == "prod" {
+		fdaEnv = fdaclient.EnvProd
+	}
+
 	s := &Server{
 		db:          db,
 		router:      http.NewServeMux(),
 		submissions: repository.NewSubmissionRepo(db),
+		fda: fdaclient.New(fdaclient.Config{
+			ExternalBaseURL: cfg.FDAExternalBaseURL,
+			UploadBaseURL:   cfg.FDAUploadBaseURL,
+			ClientID:        cfg.FDAClientID,
+			ClientSecret:    cfg.FDAClientSecret,
+			Environment:     fdaEnv,
+		}),
 	}
 	s.routes()
 	return s, nil
@@ -55,6 +79,7 @@ func (s *Server) routes() {
 	s.router.HandleFunc("POST /api/v1/submissions", s.handleCreateSubmission)
 	s.router.HandleFunc("GET /api/v1/submissions/{id}", s.handleGetSubmission)
 	s.router.HandleFunc("GET /api/v1/submissions", s.handleListSubmissions)
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/submit", s.handleSubmitToFDA)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
