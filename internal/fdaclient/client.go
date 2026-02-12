@@ -98,6 +98,21 @@ type UploadResponse struct {
 	ESGNGDescription string `json:"esgngdescription"`
 }
 
+// SubmitRequest is the JSON body sent to the FDA file submit endpoint.
+// Uses temp credentials from the credential step — no Bearer token.
+type SubmitRequest struct {
+	TempUser       string `json:"temp_user"`
+	TempPassword   string `json:"temp_password"`
+	SHA256Checksum string `json:"sha256_checksum"`
+}
+
+// SubmitResponse is the JSON response from the FDA file submit endpoint.
+type SubmitResponse struct {
+	CoreID           string `json:"core_id"`
+	ESGNGCode        string `json:"esgngcode"`
+	ESGNGDescription string `json:"esgngdescription"`
+}
+
 // New creates a new FDA API client.
 func New(cfg Config) *Client {
 	return &Client{
@@ -305,4 +320,42 @@ func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, fil
 	}
 
 	return &uploadResp, nil
+}
+
+// SubmitPayload finalizes a file submission to the FDA.
+// This endpoint does NOT use a Bearer token. Instead, it authenticates via
+// temp_user and temp_password (from the credential step) in the JSON body,
+// along with the sha256_checksum of the uploaded file(s).
+func (c *Client) SubmitPayload(ctx context.Context, payloadID string, submit SubmitRequest) (*SubmitResponse, error) {
+	body, err := json.Marshal(submit)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling submit request: %w", err)
+	}
+
+	submitURL := c.config.UploadBaseURL + "/rest/forms/v1/fileupload/payload/" + payloadID + "/submit"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, submitURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating submit request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("submit request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("submit request returned %d: %s (code: %s)",
+			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+	}
+
+	var submitResp SubmitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&submitResp); err != nil {
+		return nil, fmt.Errorf("decoding submit response: %w", err)
+	}
+
+	return &submitResp, nil
 }

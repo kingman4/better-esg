@@ -809,3 +809,171 @@ func TestUploadFile_TokenFailure(t *testing.T) {
 		t.Fatal("expected error when token fails, got nil")
 	}
 }
+
+// --- File Submit Tests ---
+
+func TestSubmitPayload_Success(t *testing.T) {
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/forms/v1/fileupload/payload/PL-123/submit" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req SubmitRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"core_id":          "CORE-12345",
+			"esgngcode":        "ESGNG230",
+			"esgngdescription": "Submission successful",
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	resp, err := client.SubmitPayload(context.Background(), "PL-123", SubmitRequest{
+		TempUser:       "temp_user_abc",
+		TempPassword:   "temp_pass_xyz",
+		SHA256Checksum: "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.CoreID != "CORE-12345" {
+		t.Errorf("expected core_id 'CORE-12345', got %q", resp.CoreID)
+	}
+	if resp.ESGNGCode != "ESGNG230" {
+		t.Errorf("expected esgngcode 'ESGNG230', got %q", resp.ESGNGCode)
+	}
+}
+
+func TestSubmitPayload_NoAuthHeader(t *testing.T) {
+	var receivedAuth string
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"core_id": "CORE-1", "esgngcode": "ESGNG230", "esgngdescription": "ok",
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	_, err := client.SubmitPayload(context.Background(), "PL-1", SubmitRequest{
+		TempUser: "u", TempPassword: "p", SHA256Checksum: "abc123",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedAuth != "" {
+		t.Errorf("SubmitPayload should not send Authorization header, got %q", receivedAuth)
+	}
+}
+
+func TestSubmitPayload_SendsCorrectJSON(t *testing.T) {
+	var receivedReq SubmitRequest
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&receivedReq)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"core_id": "CORE-1", "esgngcode": "ESGNG230", "esgngdescription": "ok",
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	input := SubmitRequest{
+		TempUser:       "temp_user_abc",
+		TempPassword:   "temp_pass_xyz",
+		SHA256Checksum: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+	}
+
+	_, err := client.SubmitPayload(context.Background(), "PL-99", input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if receivedReq.TempUser != input.TempUser {
+		t.Errorf("temp_user: expected %q, got %q", input.TempUser, receivedReq.TempUser)
+	}
+	if receivedReq.TempPassword != input.TempPassword {
+		t.Errorf("temp_password: expected %q, got %q", input.TempPassword, receivedReq.TempPassword)
+	}
+	if receivedReq.SHA256Checksum != input.SHA256Checksum {
+		t.Errorf("sha256_checksum: expected %q, got %q", input.SHA256Checksum, receivedReq.SHA256Checksum)
+	}
+}
+
+func TestSubmitPayload_ContentTypeJSON(t *testing.T) {
+	var receivedContentType string
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedContentType = r.Header.Get("Content-Type")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"core_id": "CORE-1", "esgngcode": "ESGNG230", "esgngdescription": "ok",
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	_, err := client.SubmitPayload(context.Background(), "PL-1", SubmitRequest{
+		TempUser: "u", TempPassword: "p", SHA256Checksum: "abc",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedContentType != "application/json" {
+		t.Errorf("expected Content-Type 'application/json', got %q", receivedContentType)
+	}
+}
+
+func TestSubmitPayload_APIError(t *testing.T) {
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode:        "ESGNG400",
+			ESGNGDescription: "Checksum mismatch",
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	_, err := client.SubmitPayload(context.Background(), "PL-1", SubmitRequest{
+		TempUser: "u", TempPassword: "p", SHA256Checksum: "bad",
+	})
+	if err == nil {
+		t.Fatal("expected error for bad request, got nil")
+	}
+	if !strings.Contains(err.Error(), "ESGNG400") {
+		t.Errorf("expected error to contain ESGNG400, got: %v", err)
+	}
+}
