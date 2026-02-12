@@ -7,14 +7,18 @@ import (
 	"net/http"
 
 	"github.com/kingman4/better-esg/internal/database"
+	"github.com/kingman4/better-esg/internal/repository"
 	_ "github.com/lib/pq"
 )
 
+// Server is the HTTP server that handles API requests.
 type Server struct {
-	db     *sql.DB
-	router *http.ServeMux
+	db          *sql.DB
+	router      *http.ServeMux
+	submissions *repository.SubmissionRepo
 }
 
+// New creates a new Server, runs migrations, and sets up routes.
 func New(databaseURL string) (*Server, error) {
 	db, err := sql.Open("postgres", databaseURL)
 	if err != nil {
@@ -30,8 +34,9 @@ func New(databaseURL string) (*Server, error) {
 	}
 
 	s := &Server{
-		db:     db,
-		router: http.NewServeMux(),
+		db:          db,
+		router:      http.NewServeMux(),
+		submissions: repository.NewSubmissionRepo(db),
 	}
 	s.routes()
 	return s, nil
@@ -47,6 +52,9 @@ func (s *Server) Close() error {
 
 func (s *Server) routes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
+	s.router.HandleFunc("POST /api/v1/submissions", s.handleCreateSubmission)
+	s.router.HandleFunc("GET /api/v1/submissions/{id}", s.handleGetSubmission)
+	s.router.HandleFunc("GET /api/v1/submissions", s.handleListSubmissions)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
