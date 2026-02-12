@@ -1,8 +1,12 @@
-.PHONY: build run tidy test test-integration up down clean
+.PHONY: build build-cli run tidy test test-integration up down clean
 
-# Build the Go binary
+# Build the server binary
 build:
 	go build -o server ./cmd/server
+
+# Build the CLI binary
+build-cli:
+	go build -o esg-cli ./cmd/cli
 
 # Resolve dependencies via Docker (no local Go required)
 tidy:
