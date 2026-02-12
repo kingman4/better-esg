@@ -458,6 +458,32 @@ func newMockFDAServer(t *testing.T) *httptest.Server {
 				"esgngdescription": "ok",
 			})
 
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
+			// Status polling endpoint
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"core_id":          strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/submissions/"),
+				"status":           "ACCEPTED",
+				"esgngcode":        "ESGNG210",
+				"esgngdescription": "ok",
+				"acknowledgements": []map[string]string{
+					{"acknowledgement_id": "ACK-001", "type": "Technical"},
+				},
+			})
+
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/acknowledgements/") && r.Method == http.MethodGet:
+			// Acknowledgement detail endpoint
+			ackID := strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/acknowledgements/")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"acknowledgement_id": ackID,
+				"type":               "Technical",
+				"raw_message":        "<xml>ack</xml>",
+				"parsed_data":        map[string]string{"result": "accepted"},
+				"esgngcode":          "ESGNG210",
+				"esgngdescription":   "ok",
+			})
+
 		default:
 			http.Error(w, "not found", http.StatusNotFound)
 		}
@@ -1187,5 +1213,189 @@ func TestSubmitToFDA_PersistsTempCredentials(t *testing.T) {
 	}
 	if creds.TempPassword != "tmp_p" {
 		t.Errorf("expected temp_password 'tmp_p', got %q", creds.TempPassword)
+	}
+}
+
+// --- Status Polling Tests ---
+
+// setupSubmittedSubmission creates a submission in "submitted" state with a core_id set.
+func setupSubmittedSubmission(t *testing.T, srv *Server, suffix string) (orgID, subID string) {
+	t.Helper()
+	orgID, userID := seedTestData(t, suffix)
+
+	sub, err := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID:              orgID,
+		FDACenter:          "CDER",
+		SubmissionType:     "ANDA",
+		SubmissionName:     "Status Test " + suffix,
+		SubmissionProtocol: "API",
+		FileCount:          1,
+		CreatedBy:          userID,
+	})
+	if err != nil {
+		t.Fatalf("creating submission: %v", err)
+	}
+
+	// Set core_id and advance to submitted
+	if err := srv.submissions.UpdateFDAFields(context.Background(), sub.ID,
+		"CORE-STATUS-"+suffix, "PL-STATUS-"+suffix,
+		"/upload/"+suffix, "/submit/"+suffix,
+	); err != nil {
+		t.Fatalf("updating FDA fields: %v", err)
+	}
+	if err := srv.submissions.UpdateStatus(context.Background(), sub.ID, "submitted", "SUBMITTED"); err != nil {
+		t.Fatalf("updating status: %v", err)
+	}
+
+	return orgID, sub.ID
+}
+
+func TestGetStatus_Success(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, subID := setupSubmittedSubmission(t, srv, "status-success")
+
+	req := httptest.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%s/status?org_id=%s", subID, orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp statusResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.SubmissionID != subID {
+		t.Errorf("expected submission_id %q, got %q", subID, resp.SubmissionID)
+	}
+	if resp.FDAStatus != "ACCEPTED" {
+		t.Errorf("expected fda_status 'ACCEPTED', got %q", resp.FDAStatus)
+	}
+	if resp.LocalStatus != "completed" {
+		t.Errorf("expected local_status 'completed', got %q", resp.LocalStatus)
+	}
+	if resp.WorkflowState != "ACCEPTED" {
+		t.Errorf("expected workflow_state 'ACCEPTED', got %q", resp.WorkflowState)
+	}
+	if len(resp.Acknowledgements) != 1 {
+		t.Fatalf("expected 1 acknowledgement, got %d", len(resp.Acknowledgements))
+	}
+	if resp.Acknowledgements[0].AcknowledgementID != "ACK-001" {
+		t.Errorf("expected acknowledgement_id 'ACK-001', got %q", resp.Acknowledgements[0].AcknowledgementID)
+	}
+	if resp.Acknowledgements[0].RawMessage != "<xml>ack</xml>" {
+		t.Errorf("expected raw_message '<xml>ack</xml>', got %q", resp.Acknowledgements[0].RawMessage)
+	}
+
+	// Verify DB was updated to reflect FDA status
+	updated, _ := srv.submissions.GetByID(context.Background(), orgID, subID)
+	if updated.Status != "completed" {
+		t.Errorf("DB status expected 'completed', got %q", updated.Status)
+	}
+	if updated.WorkflowState != "ACCEPTED" {
+		t.Errorf("DB workflow_state expected 'ACCEPTED', got %q", updated.WorkflowState)
+	}
+}
+
+func TestGetStatus_NotFound(t *testing.T) {
+	srv := newTestServer(t)
+	orgID, _ := seedTestData(t, "status-notfound")
+
+	req := httptest.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%s/status?org_id=%s",
+			"00000000-0000-0000-0000-000000000000", orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetStatus_NoCoreID(t *testing.T) {
+	srv := newTestServer(t)
+	orgID, userID := seedTestData(t, "status-nocoreid")
+
+	// Create a draft submission (no core_id)
+	sub, _ := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID: orgID, SubmissionType: "ANDA", SubmissionName: "No Core ID",
+		SubmissionProtocol: "API", FileCount: 1, CreatedBy: userID,
+	})
+
+	req := httptest.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%s/status?org_id=%s", sub.ID, orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestGetStatus_MissingOrgID(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/submissions/some-id/status", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestGetStatus_FDAFailure(t *testing.T) {
+	// FDA server that accepts token but rejects status checks
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{
+			"esgngcode": "ESGNG503", "esgngdescription": "Service unavailable",
+		})
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, subID := setupSubmittedSubmission(t, srv, "status-fdafail")
+
+	req := httptest.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%s/status?org_id=%s", subID, orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected 502, got %d: %s", w.Code, w.Body.String())
 	}
 }
