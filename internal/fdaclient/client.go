@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -72,6 +74,26 @@ type CredentialResponse struct {
 	CoreID           string `json:"core_id"`
 	TempUser         string `json:"temp_user"`
 	TempPassword     string `json:"temp_password"`
+	ESGNGCode        string `json:"esgngcode"`
+	ESGNGDescription string `json:"esgngdescription"`
+}
+
+// PayloadResponse is the JSON response from the FDA file payload endpoint.
+type PayloadResponse struct {
+	PayloadID string       `json:"payloadId"`
+	Links     PayloadLinks `json:"links"`
+}
+
+// PayloadLinks contains the upload and submit URLs returned by the payload endpoint.
+type PayloadLinks struct {
+	UploadLink string `json:"uploadLink"`
+	SubmitLink string `json:"submitLink"`
+}
+
+// UploadResponse is the JSON response from the FDA file upload endpoint.
+type UploadResponse struct {
+	FileName         string `json:"fileName"`
+	FileSize         int64  `json:"fileSize"`
 	ESGNGCode        string `json:"esgngcode"`
 	ESGNGDescription string `json:"esgngdescription"`
 }
@@ -200,4 +222,87 @@ func (c *Client) SubmitCredentials(ctx context.Context, cred CredentialRequest) 
 	}
 
 	return &credResp, nil
+}
+
+// GetPayload requests a new payload ID from the FDA upload API.
+// This endpoint requires NO authentication.
+// Returns the payload ID and links for subsequent file upload and submission.
+func (c *Client) GetPayload(ctx context.Context) (*PayloadResponse, error) {
+	payloadURL := c.config.UploadBaseURL + "/rest/forms/v1/fileupload/payload"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, payloadURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating payload request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("payload request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("payload request returned %d: %s (code: %s)",
+			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+	}
+
+	var payloadResp PayloadResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payloadResp); err != nil {
+		return nil, fmt.Errorf("decoding payload response: %w", err)
+	}
+
+	return &payloadResp, nil
+}
+
+// UploadFile uploads a single file to an existing payload via the FDA upload API.
+// Requires a Bearer token. The file is sent as multipart/form-data.
+func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, file io.Reader) (*UploadResponse, error) {
+	token, err := c.GetToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring token for file upload: %w", err)
+	}
+
+	// Build multipart body
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", fileName)
+	if err != nil {
+		return nil, fmt.Errorf("creating multipart form file: %w", err)
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return nil, fmt.Errorf("writing file to multipart: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("closing multipart writer: %w", err)
+	}
+
+	uploadURL := c.config.UploadBaseURL + "/rest/forms/v1/fileupload/payload/" + payloadID + "/file"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, &body)
+	if err != nil {
+		return nil, fmt.Errorf("creating upload request: %w", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("upload request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("upload request returned %d: %s (code: %s)",
+			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+	}
+
+	var uploadResp UploadResponse
+	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
+		return nil, fmt.Errorf("decoding upload response: %w", err)
+	}
+
+	return &uploadResp, nil
 }

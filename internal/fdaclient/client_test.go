@@ -3,6 +3,9 @@ package fdaclient
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -528,5 +531,281 @@ func TestSubmitCredentials_TokenFailure(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error when token acquisition fails, got nil")
+	}
+}
+
+// --- File Payload Tests ---
+
+func TestGetPayload_Success(t *testing.T) {
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/forms/v1/fileupload/payload" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		// No auth required for this endpoint
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"payloadId": "PL-98765",
+			"links": map[string]string{
+				"uploadLink": "/rest/forms/v1/fileupload/payload/PL-98765/file",
+				"submitLink": "/rest/forms/v1/fileupload/payload/PL-98765/submit",
+			},
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	resp, err := client.GetPayload(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.PayloadID != "PL-98765" {
+		t.Errorf("expected payloadId 'PL-98765', got %q", resp.PayloadID)
+	}
+	if resp.Links.UploadLink != "/rest/forms/v1/fileupload/payload/PL-98765/file" {
+		t.Errorf("unexpected uploadLink: %q", resp.Links.UploadLink)
+	}
+	if resp.Links.SubmitLink != "/rest/forms/v1/fileupload/payload/PL-98765/submit" {
+		t.Errorf("unexpected submitLink: %q", resp.Links.SubmitLink)
+	}
+}
+
+func TestGetPayload_NoAuth(t *testing.T) {
+	var receivedAuth string
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"payloadId": "PL-1",
+			"links":     map[string]string{"uploadLink": "/u", "submitLink": "/s"},
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	_, err := client.GetPayload(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedAuth != "" {
+		t.Errorf("GetPayload should not send Authorization header, got %q", receivedAuth)
+	}
+}
+
+func TestGetPayload_ServerError(t *testing.T) {
+	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode:        "ESGNG500",
+			ESGNGDescription: "Internal server error",
+		})
+	}))
+	defer uploadServer.Close()
+
+	client := New(Config{
+		UploadBaseURL: uploadServer.URL,
+		Environment:   EnvTest,
+	})
+
+	_, err := client.GetPayload(context.Background())
+	if err == nil {
+		t.Fatal("expected error for server error, got nil")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected error to contain status code, got: %v", err)
+	}
+}
+
+// --- File Upload Tests ---
+
+func TestUploadFile_Success(t *testing.T) {
+	// Combined server: token endpoint + upload endpoint
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "upload-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+
+		case r.URL.Path == "/rest/forms/v1/fileupload/payload/PL-123/file" && r.Method == http.MethodPost:
+			// Verify Bearer token
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer upload-token" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			// Verify multipart content type
+			ct := r.Header.Get("Content-Type")
+			mediaType, _, err := mime.ParseMediaType(ct)
+			if err != nil || mediaType != "multipart/form-data" {
+				http.Error(w, "expected multipart/form-data", http.StatusBadRequest)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"fileName":         "test-submission.xml",
+				"fileSize":         1024,
+				"esgngcode":        "ESGNG220",
+				"esgngdescription": "File uploaded successfully",
+			})
+
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		UploadBaseURL:   server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	fileContent := strings.NewReader("<submission>test data</submission>")
+	resp, err := client.UploadFile(context.Background(), "PL-123", "test-submission.xml", fileContent)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.FileName != "test-submission.xml" {
+		t.Errorf("expected fileName 'test-submission.xml', got %q", resp.FileName)
+	}
+	if resp.FileSize != 1024 {
+		t.Errorf("expected fileSize 1024, got %d", resp.FileSize)
+	}
+	if resp.ESGNGCode != "ESGNG220" {
+		t.Errorf("expected esgngcode 'ESGNG220', got %q", resp.ESGNGCode)
+	}
+}
+
+func TestUploadFile_SendsFileContent(t *testing.T) {
+	var receivedFileName string
+	var receivedContent string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+
+		// Parse multipart form
+		ct := r.Header.Get("Content-Type")
+		_, params, _ := mime.ParseMediaType(ct)
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		part, err := mr.NextPart()
+		if err != nil {
+			http.Error(w, "no multipart part", http.StatusBadRequest)
+			return
+		}
+		receivedFileName = part.FileName()
+		data, _ := io.ReadAll(part)
+		receivedContent = string(data)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"fileName": receivedFileName, "fileSize": len(data),
+			"esgngcode": "ESGNG220", "esgngdescription": "ok",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		UploadBaseURL:   server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	content := "file-body-content-here"
+	_, err := client.UploadFile(context.Background(), "PL-1", "data.xml", strings.NewReader(content))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if receivedFileName != "data.xml" {
+		t.Errorf("expected filename 'data.xml', got %q", receivedFileName)
+	}
+	if receivedContent != content {
+		t.Errorf("expected content %q, got %q", content, receivedContent)
+	}
+}
+
+func TestUploadFile_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode:        "ESGNG400",
+			ESGNGDescription: "File too large",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		UploadBaseURL:   server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.UploadFile(context.Background(), "PL-1", "big.xml", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error for bad request, got nil")
+	}
+	if !strings.Contains(err.Error(), "ESGNG400") {
+		t.Errorf("expected error to contain ESGNG400, got: %v", err)
+	}
+}
+
+func TestUploadFile_TokenFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode:        "ESGNG403",
+			ESGNGDescription: "Bad credentials",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		UploadBaseURL:   server.URL,
+		ClientID:        "bad",
+		ClientSecret:    "bad",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.UploadFile(context.Background(), "PL-1", "f.xml", strings.NewReader("data"))
+	if err == nil {
+		t.Fatal("expected error when token fails, got nil")
 	}
 }
