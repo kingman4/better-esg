@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -679,8 +680,9 @@ func TestUploadFile_Success(t *testing.T) {
 		Environment:     EnvTest,
 	})
 
-	fileContent := strings.NewReader("<submission>test data</submission>")
-	resp, err := client.UploadFile(context.Background(), "PL-123", "test-submission.xml", fileContent)
+	fileData := "<submission>test data</submission>"
+	fileContent := strings.NewReader(fileData)
+	resp, err := client.UploadFile(context.Background(), "PL-123", "test-submission.xml", fileContent, int64(len(fileData)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -739,7 +741,7 @@ func TestUploadFile_SendsFileContent(t *testing.T) {
 	})
 
 	content := "file-body-content-here"
-	_, err := client.UploadFile(context.Background(), "PL-1", "data.xml", strings.NewReader(content))
+	_, err := client.UploadFile(context.Background(), "PL-1", "data.xml", strings.NewReader(content), int64(len(content)))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -777,7 +779,7 @@ func TestUploadFile_APIError(t *testing.T) {
 		Environment:     EnvTest,
 	})
 
-	_, err := client.UploadFile(context.Background(), "PL-1", "big.xml", strings.NewReader("data"))
+	_, err := client.UploadFile(context.Background(), "PL-1", "big.xml", strings.NewReader("data"), 4)
 	if err == nil {
 		t.Fatal("expected error for bad request, got nil")
 	}
@@ -804,9 +806,89 @@ func TestUploadFile_TokenFailure(t *testing.T) {
 		Environment:     EnvTest,
 	})
 
-	_, err := client.UploadFile(context.Background(), "PL-1", "f.xml", strings.NewReader("data"))
+	_, err := client.UploadFile(context.Background(), "PL-1", "f.xml", strings.NewReader("data"), 4)
 	if err == nil {
 		t.Fatal("expected error when token fails, got nil")
+	}
+}
+
+func TestUploadFile_StreamsWithoutBuffering(t *testing.T) {
+	// Verifies that UploadFile streams file content via multipart framing
+	// and that retries re-send the full content by seeking back to start.
+	var attempts atomic.Int64
+	var receivedContents []string
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+
+		n := attempts.Add(1)
+
+		// Parse the multipart body to extract file content
+		ct := r.Header.Get("Content-Type")
+		_, params, _ := mime.ParseMediaType(ct)
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		part, err := mr.NextPart()
+		if err != nil {
+			http.Error(w, "bad multipart", http.StatusBadRequest)
+			return
+		}
+		data, _ := io.ReadAll(part)
+
+		mu.Lock()
+		receivedContents = append(receivedContents, string(data))
+		mu.Unlock()
+
+		// Fail first attempt with 503 to trigger retry
+		if n == 1 {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"fileName": part.FileName(), "fileSize": len(data),
+			"esgngcode": "ESGNG220", "esgngdescription": "ok",
+		})
+	}))
+	defer server.Close()
+
+	origUpload := retryUpload
+	retryUpload = retryConfig{maxAttempts: 3, baseDelay: time.Millisecond, maxDelay: 5 * time.Millisecond, linear: true}
+	defer func() { retryUpload = origUpload }()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		UploadBaseURL:   server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	content := "streaming-file-content-no-buffering"
+	_, err := client.UploadFile(context.Background(), "PL-1", "stream.xml",
+		strings.NewReader(content), int64(len(content)))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if attempts.Load() != 2 {
+		t.Fatalf("expected 2 attempts (1 retry), got %d", attempts.Load())
+	}
+
+	// Both attempts should have received the full file content
+	mu.Lock()
+	defer mu.Unlock()
+	for i, got := range receivedContents {
+		if got != content {
+			t.Errorf("attempt %d: expected content %q, got %q", i+1, content, got)
+		}
 	}
 }
 

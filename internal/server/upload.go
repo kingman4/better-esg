@@ -157,7 +157,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer fdaFile.Close()
 
-	_, fdaErr := s.fda.UploadFile(r.Context(), sub.PayloadID.String, header.Filename, fdaFile)
+	_, fdaErr := s.fda.UploadFile(r.Context(), sub.PayloadID.String, header.Filename, fdaFile, written)
 	if fdaErr != nil {
 		log.Printf("FDA upload failed for file %s on submission %s: %v", header.Filename, id, fdaErr)
 		s.files.UpdateStatus(r.Context(), fileRecord.ID, "failed")

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -332,39 +331,51 @@ func (c *Client) GetPayload(ctx context.Context) (*PayloadResponse, error) {
 	return &result, nil
 }
 
+// escapeQuotes escapes backslashes and double quotes in a string for
+// use in multipart Content-Disposition headers. Matches mime/multipart behavior.
+var escapeQuotes = strings.NewReplacer("\\", "\\\\", `"`, "\\\"")
+
 // UploadFile uploads a single file to an existing payload via the FDA upload API.
 // Requires a Bearer token. The file is sent as multipart/form-data.
+// The file content is streamed directly from the ReadSeeker — not buffered in memory.
+// On retry, the file is seeked back to the start and re-streamed.
 // Retries transient failures with linear backoff (5s, 10s, 15s, 20s, 25s).
-func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, file io.Reader) (*UploadResponse, error) {
+func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, file io.ReadSeeker, fileSize int64) (*UploadResponse, error) {
 	token, err := c.GetToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("acquiring token for file upload: %w", err)
 	}
 
-	// Build multipart body once — held in memory for retries
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	part, err := writer.CreateFormFile("file", fileName)
-	if err != nil {
-		return nil, fmt.Errorf("creating multipart form file: %w", err)
-	}
-	if _, err := io.Copy(part, file); err != nil {
-		return nil, fmt.Errorf("writing file to multipart: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("closing multipart writer: %w", err)
-	}
+	// Build multipart framing once — only the header/footer bytes, not file content.
+	boundary := fmt.Sprintf("esg-upload-%d", time.Now().UnixNano())
+	contentType := "multipart/form-data; boundary=" + boundary
 
-	bodyBytes := buf.Bytes()
-	contentType := writer.FormDataContentType()
+	var hdr bytes.Buffer
+	fmt.Fprintf(&hdr, "--%s\r\n", boundary)
+	fmt.Fprintf(&hdr, "Content-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\n",
+		escapeQuotes.Replace(fileName))
+	hdr.WriteString("Content-Type: application/octet-stream\r\n\r\n")
+	headerBytes := hdr.Bytes()
+
+	footer := []byte(fmt.Sprintf("\r\n--%s--\r\n", boundary))
+
+	contentLength := int64(len(headerBytes)) + fileSize + int64(len(footer))
 	uploadURL := c.config.UploadBaseURL + "/rest/forms/v1/fileupload/payload/" + payloadID + "/file"
 
 	var result UploadResponse
 	err = retryDo(ctx, retryUpload, func() error {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(bodyBytes))
+		// Seek file back to start for each attempt
+		if _, err := file.Seek(0, io.SeekStart); err != nil {
+			return &permanentError{err: fmt.Errorf("seeking file to start: %w", err)}
+		}
+
+		body := io.MultiReader(bytes.NewReader(headerBytes), file, bytes.NewReader(footer))
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, body)
 		if err != nil {
 			return &permanentError{err: fmt.Errorf("creating upload request: %w", err)}
 		}
+		req.ContentLength = contentLength
 		req.Header.Set("Content-Type", contentType)
 		req.Header.Set("Authorization", "Bearer "+token)
 
