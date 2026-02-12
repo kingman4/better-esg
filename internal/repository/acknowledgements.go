@@ -29,6 +29,46 @@ type InsertAckParams struct {
 	ESGNGCode    string
 }
 
+// Acknowledgement represents a row in the acknowledgements table.
+type Acknowledgement struct {
+	ID             string
+	SubmissionID   string
+	FDAAckID       sql.NullString
+	AckType        string
+	Status         string
+	RawMessage     sql.NullString
+	ParsedDataJSON sql.NullString // raw JSONB string
+	ESGNGCode      sql.NullString
+	ReceivedAt     time.Time
+	CreatedAt      time.Time
+}
+
+// ListBySubmission returns all acknowledgements for a submission, ordered by received_at.
+func (r *AckRepo) ListBySubmission(ctx context.Context, submissionID string) ([]Acknowledgement, error) {
+	query := `SELECT id, submission_id, fda_ack_id, ack_type, status,
+	                  raw_message, parsed_data_json, esgng_code, received_at, created_at
+	           FROM acknowledgements
+	           WHERE submission_id = $1
+	           ORDER BY received_at ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, submissionID)
+	if err != nil {
+		return nil, fmt.Errorf("listing acknowledgements: %w", err)
+	}
+	defer rows.Close()
+
+	var acks []Acknowledgement
+	for rows.Next() {
+		var a Acknowledgement
+		if err := rows.Scan(&a.ID, &a.SubmissionID, &a.FDAAckID, &a.AckType, &a.Status,
+			&a.RawMessage, &a.ParsedDataJSON, &a.ESGNGCode, &a.ReceivedAt, &a.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning acknowledgement: %w", err)
+		}
+		acks = append(acks, a)
+	}
+	return acks, rows.Err()
+}
+
 // Insert inserts an acknowledgement into the DB.
 // Silently skips duplicates via ON CONFLICT DO NOTHING on fda_ack_id.
 func (r *AckRepo) Insert(ctx context.Context, p InsertAckParams) error {

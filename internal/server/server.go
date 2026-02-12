@@ -108,6 +108,7 @@ func (s *Server) routes() {
 	s.router.HandleFunc("POST /api/v1/submissions/{id}/files", s.withAuth(s.handleUploadFile))
 	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.withAuth(s.handleFinalizeSubmission))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/status", s.withAuth(s.handleGetStatus))
+	s.router.HandleFunc("GET /api/v1/submissions/{id}/acknowledgements", s.withAuth(s.handleListAcknowledgements))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

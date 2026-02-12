@@ -491,3 +491,105 @@ func TestWorkflowStateLog_MultipleTransitions(t *testing.T) {
 	assert.Equal(t, "PROCESSING", entries[1].FromState)
 	assert.Equal(t, "ACCEPTED", entries[1].ToState)
 }
+
+// --- Acknowledgement Endpoint Tests ---
+
+func TestListAcknowledgements_ReturnsStoredAcks(t *testing.T) {
+	fdaServer := newMockFDAServerWithStatus(t, "ACCEPTED")
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	suffix := fmt.Sprintf("ack-list-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+	rawKey := seedAPIKey(t, orgID, userID)
+
+	subID, coreID := setupSubmittedSub(t, srv, orgID, userID, suffix)
+
+	// Run poll to store acknowledgements
+	srv.pollAllSubmissions(context.Background())
+
+	// GET /api/v1/submissions/{id}/acknowledgements
+	req := httptest.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%s/acknowledgements", subID), nil)
+	req.Header.Set("Authorization", authHeader(rawKey))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var acks []map[string]any
+	err := json.NewDecoder(w.Body).Decode(&acks)
+	require.NoError(t, err)
+	require.Len(t, acks, 1)
+
+	assert.Equal(t, "ACK-"+coreID, acks[0]["fda_ack_id"])
+	assert.Equal(t, "Technical", acks[0]["ack_type"])
+	assert.Equal(t, "<xml>ack</xml>", acks[0]["raw_message"])
+	assert.NotEmpty(t, acks[0]["received_at"])
+}
+
+func TestListAcknowledgements_EmptyWhenNoneStored(t *testing.T) {
+	srv := newTestServer(t)
+	suffix := fmt.Sprintf("ack-empty-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+	rawKey := seedAPIKey(t, orgID, userID)
+
+	// Create a submission with no acks
+	sub, err := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID:              orgID,
+		FDACenter:          "CDER",
+		SubmissionType:     "ANDA",
+		SubmissionName:     "No Acks " + suffix,
+		SubmissionProtocol: "API",
+		FileCount:          1,
+		CreatedBy:          userID,
+	})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/v1/submissions/%s/acknowledgements", sub.ID), nil)
+	req.Header.Set("Authorization", authHeader(rawKey))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var acks []map[string]any
+	err = json.NewDecoder(w.Body).Decode(&acks)
+	require.NoError(t, err)
+	assert.Len(t, acks, 0, "should return empty array, not null")
+}
+
+func TestListAcknowledgements_NotFound(t *testing.T) {
+	srv := newTestServer(t)
+	suffix := fmt.Sprintf("ack-404-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+	rawKey := seedAPIKey(t, orgID, userID)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/submissions/00000000-0000-0000-0000-000000000000/acknowledgements", nil)
+	req.Header.Set("Authorization", authHeader(rawKey))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestListAcknowledgements_RequiresAuth(t *testing.T) {
+	srv := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/api/v1/submissions/some-id/acknowledgements", nil)
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
