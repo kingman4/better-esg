@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 )
@@ -15,6 +16,9 @@ type Config struct {
 	FDAClientID        string
 	FDAClientSecret    string
 	FDAEnvironment     string // "prod" or "test"
+
+	// Encryption — 32-byte key for AES-256-GCM (hex-encoded in env var)
+	EncryptionKey []byte
 }
 
 func Load() (*Config, error) {
@@ -40,6 +44,18 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("FDA_ENVIRONMENT must be 'prod' or 'test', got %q", fdaEnv)
 	}
 
+	encKeyHex := os.Getenv("ENCRYPTION_KEY")
+	if encKeyHex == "" {
+		return nil, fmt.Errorf("ENCRYPTION_KEY is required (64-char hex string for 32-byte AES-256 key)")
+	}
+	encKey, err := hex.DecodeString(encKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("ENCRYPTION_KEY must be valid hex: %w", err)
+	}
+	if len(encKey) != 32 {
+		return nil, fmt.Errorf("ENCRYPTION_KEY must be 32 bytes (64 hex chars), got %d bytes", len(encKey))
+	}
+
 	return &Config{
 		Port:               port,
 		DatabaseURL:        dbURL,
@@ -48,6 +64,7 @@ func Load() (*Config, error) {
 		FDAClientID:        os.Getenv("FDA_CLIENT_ID"),
 		FDAClientSecret:    os.Getenv("FDA_CLIENT_SECRET"),
 		FDAEnvironment:     fdaEnv,
+		EncryptionKey:      encKey,
 	}, nil
 }
 

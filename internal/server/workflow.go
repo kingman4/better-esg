@@ -25,14 +25,16 @@ type submitToFDAResponse struct {
 	WorkflowState string `json:"workflow_state"`
 }
 
-// handleSubmitToFDA orchestrates the FDA 5-step submission workflow:
+// handleSubmitToFDA initiates the FDA submission workflow:
 // 1. Validate the submission is in draft status
 // 2. Submit credentials to FDA → get core_id + temp credentials
-// 3. Get payload ID from FDA upload API
-// 4. Update DB with FDA fields (core_id, payload_id, links)
+// 3. Persist temp credentials for later use in finalize step
+// 4. Get payload ID from FDA upload API
+// 5. Update DB with FDA fields (core_id, payload_id, links)
 //
-// File upload (step 4) and final submit (step 5) are not yet implemented
-// in this handler — they require file storage integration.
+// After this handler returns, the caller should upload files via
+// POST /api/v1/submissions/{id}/files, then finalize via
+// POST /api/v1/submissions/{id}/finalize.
 func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
@@ -94,6 +96,13 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA credential submission failed: " + sanitizeError(err),
 		})
+		return
+	}
+
+	// Persist temp credentials for use during finalize step
+	if err := s.submissions.SaveTempCredentials(r.Context(), id, credResp.TempUser, credResp.TempPassword); err != nil {
+		log.Printf("error saving temp credentials for %s: %v", id, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
 		return
 	}
 

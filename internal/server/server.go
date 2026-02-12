@@ -17,6 +17,7 @@ type Server struct {
 	db          *sql.DB
 	router      *http.ServeMux
 	submissions *repository.SubmissionRepo
+	files       *repository.SubmissionFileRepo
 	fda         *fdaclient.Client
 }
 
@@ -28,6 +29,7 @@ type Config struct {
 	FDAClientID        string
 	FDAClientSecret    string
 	FDAEnvironment     string // "prod" or "test"
+	EncryptionKey      []byte // 32 bytes for AES-256-GCM
 }
 
 // New creates a new Server, runs migrations, and sets up routes.
@@ -53,7 +55,8 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{
 		db:          db,
 		router:      http.NewServeMux(),
-		submissions: repository.NewSubmissionRepo(db),
+		submissions: repository.NewSubmissionRepo(db, cfg.EncryptionKey),
+		files:       repository.NewSubmissionFileRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -80,6 +83,8 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /api/v1/submissions/{id}", s.handleGetSubmission)
 	s.router.HandleFunc("GET /api/v1/submissions", s.handleListSubmissions)
 	s.router.HandleFunc("POST /api/v1/submissions/{id}/submit", s.handleSubmitToFDA)
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/files", s.handleUploadFile)
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.handleFinalizeSubmission)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

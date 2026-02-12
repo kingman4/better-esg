@@ -5,13 +5,19 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,11 +29,26 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+// mockCoreIDCounter ensures each mock FDA server returns unique core_ids
+// to avoid the UNIQUE constraint on submissions.core_id.
+var mockCoreIDCounter atomic.Int64
+
 // Package-level shared test infrastructure — one container for all tests.
 var (
 	testDB        *sql.DB
 	testContainer testcontainers.Container
+	// Fixed 32-byte key for deterministic test encryption.
+	testEncryptionKey = []byte("test-encryption-key-32-bytes!!")
 )
+
+func init() {
+	// Pad to exactly 32 bytes
+	if len(testEncryptionKey) < 32 {
+		padded := make([]byte, 32)
+		copy(padded, testEncryptionKey)
+		testEncryptionKey = padded
+	}
+}
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
@@ -111,7 +132,8 @@ func newTestServerWithFDA(t *testing.T, fda *fdaclient.Client) *Server {
 	s := &Server{
 		db:          testDB,
 		router:      http.NewServeMux(),
-		submissions: repository.NewSubmissionRepo(testDB),
+		submissions: repository.NewSubmissionRepo(testDB, testEncryptionKey),
+		files:       repository.NewSubmissionFileRepo(testDB),
 		fda:         fda,
 	}
 	s.routes()
@@ -378,7 +400,9 @@ func TestListSubmissions_Pagination(t *testing.T) {
 // --- FDA Workflow Tests ---
 
 // newMockFDAServer creates an httptest.Server that handles OAuth token,
-// credential submission, and payload endpoints.
+// credential submission, payload, file upload, and submit endpoints.
+// Each call to the credential endpoint returns a unique core_id to avoid
+// the UNIQUE constraint on submissions.core_id across shared-container tests.
 func newMockFDAServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -391,9 +415,11 @@ func newMockFDAServer(t *testing.T) *httptest.Server {
 
 		case (r.URL.Path == "/api/esgng/v1/credentials/api/test" ||
 			r.URL.Path == "/api/esgng/v1/credentials/api") && r.Method == http.MethodPost:
+			n := mockCoreIDCounter.Add(1)
+			coreID := fmt.Sprintf("CORE-WORKFLOW-%d", n)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]string{
-				"core_id":          "CORE-WORKFLOW-123",
+				"core_id":          coreID,
 				"temp_user":        "tmp_u",
 				"temp_password":    "tmp_p",
 				"esgngcode":        "ESGNG210",
@@ -401,19 +427,78 @@ func newMockFDAServer(t *testing.T) *httptest.Server {
 			})
 
 		case r.URL.Path == "/rest/forms/v1/fileupload/payload" && r.Method == http.MethodGet:
+			n := mockCoreIDCounter.Load()
+			payloadID := fmt.Sprintf("PL-WORKFLOW-%d", n)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
-				"payloadId": "PL-WORKFLOW-456",
+				"payloadId": payloadID,
 				"links": map[string]string{
-					"uploadLink": "/rest/forms/v1/fileupload/payload/PL-WORKFLOW-456/file",
-					"submitLink": "/rest/forms/v1/fileupload/payload/PL-WORKFLOW-456/submit",
+					"uploadLink": fmt.Sprintf("/rest/forms/v1/fileupload/payload/%s/file", payloadID),
+					"submitLink": fmt.Sprintf("/rest/forms/v1/fileupload/payload/%s/submit", payloadID),
 				},
+			})
+
+		case strings.HasSuffix(r.URL.Path, "/file") && r.Method == http.MethodPost:
+			// File upload endpoint
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"fileName":         "test.pdf",
+				"fileSize":         1024,
+				"esgngcode":        "ESGNG210",
+				"esgngdescription": "ok",
+			})
+
+		case strings.HasSuffix(r.URL.Path, "/submit") && r.Method == http.MethodPost:
+			// Payload submit endpoint
+			n := mockCoreIDCounter.Load()
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{
+				"core_id":          fmt.Sprintf("CORE-WORKFLOW-%d", n),
+				"esgngcode":        "ESGNG210",
+				"esgngdescription": "ok",
 			})
 
 		default:
 			http.Error(w, "not found", http.StatusNotFound)
 		}
 	}))
+}
+
+// setupPayloadObtainedSubmission creates a submission and advances it to payload_obtained
+// state with temp credentials and payload_id set — ready for file upload.
+func setupPayloadObtainedSubmission(t *testing.T, srv *Server, suffix string) (orgID, subID string) {
+	t.Helper()
+	orgID, userID := seedTestData(t, suffix)
+
+	sub, err := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID:              orgID,
+		FDACenter:          "CDER",
+		SubmissionType:     "ANDA",
+		SubmissionName:     "Upload Test " + suffix,
+		SubmissionProtocol: "API",
+		FileCount:          1,
+		Description:        "test",
+		CreatedBy:          userID,
+	})
+	if err != nil {
+		t.Fatalf("creating submission: %v", err)
+	}
+
+	// Set FDA fields as if handleSubmitToFDA already ran
+	if err := srv.submissions.UpdateFDAFields(context.Background(), sub.ID,
+		"CORE-"+suffix, "PL-"+suffix,
+		"/upload/"+suffix, "/submit/"+suffix,
+	); err != nil {
+		t.Fatalf("updating FDA fields: %v", err)
+	}
+	if err := srv.submissions.SaveTempCredentials(context.Background(), sub.ID, "tmp_u", "tmp_p"); err != nil {
+		t.Fatalf("saving temp credentials: %v", err)
+	}
+	if err := srv.submissions.UpdateStatus(context.Background(), sub.ID, "payload_obtained", "UPLOAD_PENDING"); err != nil {
+		t.Fatalf("updating status: %v", err)
+	}
+
+	return orgID, sub.ID
 }
 
 func TestSubmitToFDA_Success(t *testing.T) {
@@ -466,11 +551,11 @@ func TestSubmitToFDA_Success(t *testing.T) {
 	var resp submitToFDAResponse
 	json.NewDecoder(w.Body).Decode(&resp)
 
-	if resp.CoreID != "CORE-WORKFLOW-123" {
-		t.Errorf("expected core_id 'CORE-WORKFLOW-123', got %q", resp.CoreID)
+	if !strings.HasPrefix(resp.CoreID, "CORE-WORKFLOW-") {
+		t.Errorf("expected core_id with prefix 'CORE-WORKFLOW-', got %q", resp.CoreID)
 	}
-	if resp.PayloadID != "PL-WORKFLOW-456" {
-		t.Errorf("expected payload_id 'PL-WORKFLOW-456', got %q", resp.PayloadID)
+	if !strings.HasPrefix(resp.PayloadID, "PL-WORKFLOW-") {
+		t.Errorf("expected payload_id with prefix 'PL-WORKFLOW-', got %q", resp.PayloadID)
 	}
 	if resp.Status != "payload_obtained" {
 		t.Errorf("expected status 'payload_obtained', got %q", resp.Status)
@@ -478,10 +563,10 @@ func TestSubmitToFDA_Success(t *testing.T) {
 
 	// Verify DB was updated
 	updated, _ := srv.submissions.GetByID(context.Background(), orgID, sub.ID)
-	if !updated.CoreID.Valid || updated.CoreID.String != "CORE-WORKFLOW-123" {
+	if !updated.CoreID.Valid || !strings.HasPrefix(updated.CoreID.String, "CORE-WORKFLOW-") {
 		t.Errorf("DB core_id not updated: %v", updated.CoreID)
 	}
-	if !updated.PayloadID.Valid || updated.PayloadID.String != "PL-WORKFLOW-456" {
+	if !updated.PayloadID.Valid || !strings.HasPrefix(updated.PayloadID.String, "PL-WORKFLOW-") {
 		t.Errorf("DB payload_id not updated: %v", updated.PayloadID)
 	}
 	if updated.Status != "payload_obtained" {
@@ -621,5 +706,486 @@ func TestSubmitToFDA_FDACredentialFailure(t *testing.T) {
 	updated, _ := srv.submissions.GetByID(context.Background(), orgID, sub.ID)
 	if updated.Status != "failed" {
 		t.Errorf("expected status 'failed' after FDA error, got %q", updated.Status)
+	}
+}
+
+// --- File Upload Tests ---
+
+// createMultipartFileRequest builds a multipart POST request with a file field.
+func createMultipartFileRequest(t *testing.T, url, fieldName, fileName string, content []byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile(fieldName, fileName)
+	if err != nil {
+		t.Fatalf("creating form file: %v", err)
+	}
+	if _, err := io.Copy(part, bytes.NewReader(content)); err != nil {
+		t.Fatalf("writing file content: %v", err)
+	}
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, url, &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	return req
+}
+
+func TestUploadFile_Success(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, subID := setupPayloadObtainedSubmission(t, srv, "upload-success")
+
+	fileContent := []byte("test file content for FDA submission")
+	req := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", subID, orgID),
+		"file", "test-document.pdf", fileContent)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp uploadFileResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.FileID == "" {
+		t.Error("expected non-empty file_id")
+	}
+	if resp.FileName != "test-document.pdf" {
+		t.Errorf("expected file_name 'test-document.pdf', got %q", resp.FileName)
+	}
+	if resp.FileSizeBytes != int64(len(fileContent)) {
+		t.Errorf("expected file_size_bytes %d, got %d", len(fileContent), resp.FileSizeBytes)
+	}
+
+	// Verify checksum matches
+	expectedHash := sha256.Sum256(fileContent)
+	expectedChecksum := hex.EncodeToString(expectedHash[:])
+	if resp.SHA256Checksum != expectedChecksum {
+		t.Errorf("expected checksum %q, got %q", expectedChecksum, resp.SHA256Checksum)
+	}
+	if resp.UploadStatus != "uploaded" {
+		t.Errorf("expected upload_status 'uploaded', got %q", resp.UploadStatus)
+	}
+
+	// Verify DB records
+	files, _ := srv.files.ListBySubmission(context.Background(), subID)
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file record, got %d", len(files))
+	}
+	if files[0].UploadStatus != "uploaded" {
+		t.Errorf("DB file status expected 'uploaded', got %q", files[0].UploadStatus)
+	}
+
+	// Verify submission status was updated
+	updated, _ := srv.submissions.GetByID(context.Background(), orgID, subID)
+	if updated.Status != "file_uploaded" {
+		t.Errorf("expected submission status 'file_uploaded', got %q", updated.Status)
+	}
+}
+
+func TestUploadFile_WrongStatus(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, userID := seedTestData(t, "upload-wrongstatus")
+
+	// Create a draft submission (not payload_obtained)
+	sub, _ := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID: orgID, SubmissionType: "ANDA", SubmissionName: "Draft Sub",
+		SubmissionProtocol: "API", FileCount: 1, CreatedBy: userID,
+	})
+
+	req := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", sub.ID, orgID),
+		"file", "test.pdf", []byte("data"))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUploadFile_NotFound(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, _ := seedTestData(t, "upload-notfound")
+
+	req := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s",
+			"00000000-0000-0000-0000-000000000000", orgID),
+		"file", "test.pdf", []byte("data"))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected 404, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestUploadFile_ExceedsFileCount(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, subID := setupPayloadObtainedSubmission(t, srv, "upload-exceed")
+
+	// Upload the first file (file_count is 1)
+	req := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", subID, orgID),
+		"file", "first.pdf", []byte("first file"))
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("first upload failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Try to upload a second file — should be rejected
+	req2 := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", subID, orgID),
+		"file", "second.pdf", []byte("second file"))
+	w2 := httptest.NewRecorder()
+	srv.ServeHTTP(w2, req2)
+
+	if w2.Code != http.StatusConflict {
+		t.Errorf("expected 409 for exceeding file count, got %d: %s", w2.Code, w2.Body.String())
+	}
+}
+
+func TestUploadFile_FDAFailure(t *testing.T) {
+	// FDA server that accepts token but rejects uploads
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		// Reject all other requests (including file uploads)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]string{
+			"esgngcode": "ESGNG503", "esgngdescription": "Service unavailable",
+		})
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, subID := setupPayloadObtainedSubmission(t, srv, "upload-fdafail")
+
+	req := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", subID, orgID),
+		"file", "test.pdf", []byte("data"))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify the file record was marked as failed
+	files, _ := srv.files.ListBySubmission(context.Background(), subID)
+	if len(files) != 1 {
+		t.Fatalf("expected 1 file record, got %d", len(files))
+	}
+	if files[0].UploadStatus != "failed" {
+		t.Errorf("expected file status 'failed', got %q", files[0].UploadStatus)
+	}
+}
+
+// --- Finalize Tests ---
+
+func TestFinalizeSubmission_Success(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, subID := setupPayloadObtainedSubmission(t, srv, "finalize-success")
+
+	// Upload a file first (required before finalize)
+	uploadReq := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", subID, orgID),
+		"file", "submission.pdf", []byte("final file content"))
+	uploadW := httptest.NewRecorder()
+	srv.ServeHTTP(uploadW, uploadReq)
+	if uploadW.Code != http.StatusOK {
+		t.Fatalf("upload prerequisite failed: %d: %s", uploadW.Code, uploadW.Body.String())
+	}
+
+	// Finalize
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/finalize?org_id=%s", subID, orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp finalizeResponse
+	json.NewDecoder(w.Body).Decode(&resp)
+
+	if resp.SubmissionID != subID {
+		t.Errorf("expected submission_id %q, got %q", subID, resp.SubmissionID)
+	}
+	if resp.Status != "submitted" {
+		t.Errorf("expected status 'submitted', got %q", resp.Status)
+	}
+	if resp.WorkflowState != "SUBMITTED" {
+		t.Errorf("expected workflow_state 'SUBMITTED', got %q", resp.WorkflowState)
+	}
+
+	// Verify DB status
+	updated, _ := srv.submissions.GetByID(context.Background(), orgID, subID)
+	if updated.Status != "submitted" {
+		t.Errorf("DB status expected 'submitted', got %q", updated.Status)
+	}
+	if updated.WorkflowState != "SUBMITTED" {
+		t.Errorf("DB workflow_state expected 'SUBMITTED', got %q", updated.WorkflowState)
+	}
+}
+
+func TestFinalizeSubmission_WrongStatus(t *testing.T) {
+	srv := newTestServer(t)
+	orgID, userID := seedTestData(t, "finalize-wrongstatus")
+
+	// Create a draft submission (not file_uploaded)
+	sub, _ := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID: orgID, SubmissionType: "ANDA", SubmissionName: "Draft Sub",
+		SubmissionProtocol: "API", FileCount: 1, CreatedBy: userID,
+	})
+
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/finalize?org_id=%s", sub.ID, orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestFinalizeSubmission_NotAllFilesUploaded(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, userID := seedTestData(t, "finalize-notready")
+
+	// Create submission expecting 2 files
+	sub, _ := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID: orgID, FDACenter: "CDER", SubmissionType: "ANDA",
+		SubmissionName: "Two File Sub", SubmissionProtocol: "API",
+		FileCount: 2, CreatedBy: userID,
+	})
+
+	// Set up as payload_obtained with FDA fields
+	srv.submissions.UpdateFDAFields(context.Background(), sub.ID,
+		"CORE-NOTREADY", "PL-NOTREADY", "/upload", "/submit")
+	srv.submissions.SaveTempCredentials(context.Background(), sub.ID, "tmp_u", "tmp_p")
+	srv.submissions.UpdateStatus(context.Background(), sub.ID, "payload_obtained", "UPLOAD_PENDING")
+
+	// Upload only 1 of 2 files
+	uploadReq := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", sub.ID, orgID),
+		"file", "first.pdf", []byte("first"))
+	uploadW := httptest.NewRecorder()
+	srv.ServeHTTP(uploadW, uploadReq)
+	if uploadW.Code != http.StatusOK {
+		t.Fatalf("first upload failed: %d: %s", uploadW.Code, uploadW.Body.String())
+	}
+
+	// Try to finalize — should fail because only 1 of 2 files uploaded
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/finalize?org_id=%s", sub.ID, orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Errorf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestFinalizeSubmission_FDAFailure(t *testing.T) {
+	// FDA server that rejects submit
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+		case strings.HasSuffix(r.URL.Path, "/file") && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"fileName": "test.pdf", "fileSize": 4,
+				"esgngcode": "ESGNG210", "esgngdescription": "ok",
+			})
+		case strings.HasSuffix(r.URL.Path, "/submit"):
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{
+				"esgngcode": "ESGNG500", "esgngdescription": "FDA processing error",
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, subID := setupPayloadObtainedSubmission(t, srv, "finalize-fdafail")
+
+	// Upload a file first
+	uploadReq := createMultipartFileRequest(t,
+		fmt.Sprintf("/api/v1/submissions/%s/files?org_id=%s", subID, orgID),
+		"file", "test.pdf", []byte("data"))
+	uploadW := httptest.NewRecorder()
+	srv.ServeHTTP(uploadW, uploadReq)
+	if uploadW.Code != http.StatusOK {
+		t.Fatalf("upload failed: %d: %s", uploadW.Code, uploadW.Body.String())
+	}
+
+	// Finalize — FDA submit should fail
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/finalize?org_id=%s", subID, orgID), nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadGateway {
+		t.Errorf("expected 502, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify status is failed
+	updated, _ := srv.submissions.GetByID(context.Background(), orgID, subID)
+	if updated.Status != "failed" {
+		t.Errorf("expected status 'failed', got %q", updated.Status)
+	}
+}
+
+func TestSubmitToFDA_PersistsTempCredentials(t *testing.T) {
+	fdaServer := newMockFDAServer(t)
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	orgID, userID := seedTestData(t, "workflow-tempcreds")
+
+	sub, _ := srv.submissions.Create(context.Background(), repository.CreateSubmissionParams{
+		OrgID: orgID, FDACenter: "CDER", SubmissionType: "ANDA",
+		SubmissionName: "Temp Creds Test", SubmissionProtocol: "API",
+		FileCount: 1, CreatedBy: userID,
+	})
+
+	body := map[string]string{
+		"org_id": orgID, "user_email": "u@x.com", "company_id": "C1",
+	}
+	b, _ := json.Marshal(body)
+
+	req := httptest.NewRequest(http.MethodPost,
+		fmt.Sprintf("/api/v1/submissions/%s/submit", sub.ID), bytes.NewReader(b))
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify temp credentials were persisted
+	creds, err := srv.submissions.GetTempCredentials(context.Background(), sub.ID)
+	if err != nil {
+		t.Fatalf("getting temp credentials: %v", err)
+	}
+	if creds.TempUser != "tmp_u" {
+		t.Errorf("expected temp_user 'tmp_u', got %q", creds.TempUser)
+	}
+	if creds.TempPassword != "tmp_p" {
+		t.Errorf("expected temp_password 'tmp_p', got %q", creds.TempPassword)
 	}
 }
