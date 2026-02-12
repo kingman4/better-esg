@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS workflow_state_log CASCADE;
+DROP TABLE IF EXISTS audit_logs CASCADE;

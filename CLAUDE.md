@@ -9,10 +9,19 @@
 - `cmd/server/` — Application entry point
 - `internal/config/` — Configuration loading (env vars)
 - `internal/server/` — HTTP server, routing, handlers
+- `internal/database/` — Database migrations (embedded via go:embed)
+- `internal/database/migrations/` — SQL migration files (golang-migrate format)
 - `api_docs/` — FDA ESG NextGen API documentation (Guide + Specification PDFs)
 - `scripts/` — Document generation scripts (PRD and TDD generators)
 - `FDA_ESG_NextGen_Submission_Platform_PRD.docx` — Product Requirements Document
 - `FDA_ESG_NextGen_TDD.docx` — Technical Design Document
+
+## Testing
+- **Test-driven development (TDD):** Write tests first, then implement until tests pass.
+- Unit tests: Go `testing` package + `testify/assert` for assertions. Table-driven tests.
+- Integration tests: `testcontainers-go` for disposable Postgres containers. `httptest` for HTTP handlers.
+- FDA API tests: Mock HTTP servers via `httptest.NewServer` — never hit real FDA endpoints in CI.
+- Separation: Integration tests use `//go:build integration` build tag. `go test ./...` runs unit tests only; `go test -tags=integration ./...` includes integration tests.
 
 ## Local Development
 - Local dev runs via Docker Compose: `docker compose up --build`

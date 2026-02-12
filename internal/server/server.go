@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/kingman4/better-esg/internal/database"
 	_ "github.com/lib/pq"
 )
 
@@ -21,6 +22,10 @@ func New(databaseURL string) (*Server, error) {
 	}
 
 	if err := db.Ping(); err != nil {
+		return nil, err
+	}
+
+	if err := database.RunMigrations(db); err != nil {
 		return nil, err
 	}
 

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS submission_files CASCADE;
+DROP TABLE IF EXISTS submissions CASCADE;
