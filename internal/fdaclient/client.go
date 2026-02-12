@@ -1,6 +1,7 @@
 package fdaclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -53,6 +54,26 @@ type errorResponse struct {
 	Message          string `json:"message"`
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description"`
+}
+
+// CredentialRequest is the JSON body sent to the FDA credential submission endpoint.
+type CredentialRequest struct {
+	UserID             string `json:"user_id"`
+	FDACenter          string `json:"fda_center"`
+	CompanyID          string `json:"company_id"`
+	SubmissionType     string `json:"submission_type"`
+	SubmissionProtocol string `json:"submission_protocol"`
+	FileCount          int    `json:"file_count"`
+	Description        string `json:"description,omitempty"`
+}
+
+// CredentialResponse is the JSON response from the FDA credential submission endpoint.
+type CredentialResponse struct {
+	CoreID           string `json:"core_id"`
+	TempUser         string `json:"temp_user"`
+	TempPassword     string `json:"temp_password"`
+	ESGNGCode        string `json:"esgngcode"`
+	ESGNGDescription string `json:"esgngdescription"`
 }
 
 // New creates a new FDA API client.
@@ -135,4 +156,48 @@ func (c *Client) CredentialPath() string {
 		return "/api/esgng/v1/credentials/api"
 	}
 	return "/api/esgng/v1/credentials/api/test"
+}
+
+// SubmitCredentials sends a credential submission request to the FDA API.
+// It acquires a Bearer token automatically, then POSTs the credential request.
+// Returns the temporary credentials (core_id, temp_user, temp_password) needed
+// for subsequent file upload and submission steps.
+func (c *Client) SubmitCredentials(ctx context.Context, cred CredentialRequest) (*CredentialResponse, error) {
+	token, err := c.GetToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring token for credential submission: %w", err)
+	}
+
+	body, err := json.Marshal(cred)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling credential request: %w", err)
+	}
+
+	credURL := c.config.ExternalBaseURL + c.CredentialPath()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, credURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating credential request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("credential request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("credential request returned %d: %s (code: %s)",
+			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+	}
+
+	var credResp CredentialResponse
+	if err := json.NewDecoder(resp.Body).Decode(&credResp); err != nil {
+		return nil, fmt.Errorf("decoding credential response: %w", err)
+	}
+
+	return &credResp, nil
 }
