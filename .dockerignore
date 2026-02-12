@@ -1,0 +1,8 @@
+node_modules
+scripts
+api_docs
+*.docx
+*.md
+.env
+.git
+unpacked_*

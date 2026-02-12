@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=esg
+      - DB_PASSWORD=esg
+      - DB_NAME=esg
+      - DB_SSLMODE=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: esg
+      POSTGRES_PASSWORD: esg
+      POSTGRES_DB: esg
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U esg"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

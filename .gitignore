@@ -1,0 +1,34 @@
+# Binaries
+/server
+*.exe
+
+# Environment
+.env
+
+# Dependencies
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+pgdata/
+
+# FDA API documentation
+api_docs/
+
+# PRD/TDD docs and generation artifacts
+*.docx
+*.docx#
+.~lock.*
+scripts/
+unpacked_*/
+GENERATION_SUMMARY.md
+package.json
+package-lock.json
