@@ -10,8 +10,8 @@ import (
 )
 
 // submitToFDARequest is the JSON body for POST /api/v1/submissions/{id}/submit.
+// org_id comes from the authenticated API key context.
 type submitToFDARequest struct {
-	OrgID     string `json:"org_id"`
 	UserEmail string `json:"user_email"`
 	CompanyID string `json:"company_id"`
 }
@@ -42,21 +42,23 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	orgID := orgIDFromContext(r.Context())
+
 	var req submitToFDARequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
 
-	if req.OrgID == "" || req.UserEmail == "" || req.CompanyID == "" {
+	if req.UserEmail == "" || req.CompanyID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "org_id, user_email, and company_id are required",
+			"error": "user_email and company_id are required",
 		})
 		return
 	}
 
 	// 1. Look up submission and verify it's in draft status
-	sub, err := s.submissions.GetByID(r.Context(), req.OrgID, id)
+	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {
 		log.Printf("error getting submission %s: %v", id, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get submission"})

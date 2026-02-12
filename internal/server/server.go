@@ -18,6 +18,7 @@ type Server struct {
 	router      *http.ServeMux
 	submissions *repository.SubmissionRepo
 	files       *repository.SubmissionFileRepo
+	apiKeys     *repository.APIKeyRepo
 	fda         *fdaclient.Client
 }
 
@@ -57,6 +58,7 @@ func New(cfg Config) (*Server, error) {
 		router:      http.NewServeMux(),
 		submissions: repository.NewSubmissionRepo(db, cfg.EncryptionKey),
 		files:       repository.NewSubmissionFileRepo(db),
+		apiKeys:     repository.NewAPIKeyRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -78,14 +80,17 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) routes() {
+	// Public endpoints
 	s.router.HandleFunc("GET /health", s.handleHealth)
-	s.router.HandleFunc("POST /api/v1/submissions", s.handleCreateSubmission)
-	s.router.HandleFunc("GET /api/v1/submissions/{id}", s.handleGetSubmission)
-	s.router.HandleFunc("GET /api/v1/submissions", s.handleListSubmissions)
-	s.router.HandleFunc("POST /api/v1/submissions/{id}/submit", s.handleSubmitToFDA)
-	s.router.HandleFunc("POST /api/v1/submissions/{id}/files", s.handleUploadFile)
-	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.handleFinalizeSubmission)
-	s.router.HandleFunc("GET /api/v1/submissions/{id}/status", s.handleGetStatus)
+
+	// Authenticated API endpoints
+	s.router.HandleFunc("POST /api/v1/submissions", s.withAuth(s.handleCreateSubmission))
+	s.router.HandleFunc("GET /api/v1/submissions/{id}", s.withAuth(s.handleGetSubmission))
+	s.router.HandleFunc("GET /api/v1/submissions", s.withAuth(s.handleListSubmissions))
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/submit", s.withAuth(s.handleSubmitToFDA))
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/files", s.withAuth(s.handleUploadFile))
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.withAuth(s.handleFinalizeSubmission))
+	s.router.HandleFunc("GET /api/v1/submissions/{id}/status", s.withAuth(s.handleGetStatus))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

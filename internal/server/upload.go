@@ -43,11 +43,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orgID := r.URL.Query().Get("org_id")
-	if orgID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "org_id query parameter is required"})
-		return
-	}
+	orgID := orgIDFromContext(r.Context())
 
 	// Look up the submission
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
@@ -201,11 +197,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	orgID := r.URL.Query().Get("org_id")
-	if orgID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "org_id query parameter is required"})
-		return
-	}
+	orgID := orgIDFromContext(r.Context())
 
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {

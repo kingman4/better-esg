@@ -4,21 +4,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/kingman4/better-esg/internal/repository"
 )
 
 // createSubmissionRequest is the JSON body for POST /api/v1/submissions.
+// org_id and created_by come from the authenticated API key context.
 type createSubmissionRequest struct {
-	OrgID              string `json:"org_id"`
 	FDACenter          string `json:"fda_center"`
 	SubmissionType     string `json:"submission_type"`
 	SubmissionName     string `json:"submission_name"`
 	SubmissionProtocol string `json:"submission_protocol"`
 	FileCount          int    `json:"file_count"`
 	Description        string `json:"description"`
-	CreatedBy          string `json:"created_by"`
 }
 
 // submissionResponse is the JSON response for a single submission.
@@ -70,16 +68,18 @@ func toSubmissionResponse(s *repository.Submission) submissionResponse {
 }
 
 func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) {
+	orgID := orgIDFromContext(r.Context())
+	userID := userIDFromContext(r.Context())
+
 	var req createSubmissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
 
-	// Basic validation
-	if req.OrgID == "" || req.SubmissionType == "" || req.SubmissionName == "" || req.CreatedBy == "" {
+	if req.SubmissionType == "" || req.SubmissionName == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "org_id, submission_type, submission_name, and created_by are required",
+			"error": "submission_type and submission_name are required",
 		})
 		return
 	}
@@ -96,14 +96,14 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) 
 	}
 
 	sub, err := s.submissions.Create(r.Context(), repository.CreateSubmissionParams{
-		OrgID:              req.OrgID,
+		OrgID:              orgID,
 		FDACenter:          req.FDACenter,
 		SubmissionType:     req.SubmissionType,
 		SubmissionName:     req.SubmissionName,
 		SubmissionProtocol: protocol,
 		FileCount:          req.FileCount,
 		Description:        req.Description,
-		CreatedBy:          req.CreatedBy,
+		CreatedBy:          userID,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create submission"})
@@ -114,20 +114,13 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleGetSubmission(w http.ResponseWriter, r *http.Request) {
-	// Extract {id} from path: /api/v1/submissions/{id}
 	id := r.PathValue("id")
 	if id == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing submission id"})
 		return
 	}
 
-	// org_id from query param (will be from auth context later)
-	orgID := r.URL.Query().Get("org_id")
-	if orgID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "org_id query parameter is required"})
-		return
-	}
-
+	orgID := orgIDFromContext(r.Context())
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get submission"})
@@ -142,11 +135,7 @@ func (s *Server) handleGetSubmission(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListSubmissions(w http.ResponseWriter, r *http.Request) {
-	orgID := r.URL.Query().Get("org_id")
-	if orgID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "org_id query parameter is required"})
-		return
-	}
+	orgID := orgIDFromContext(r.Context())
 
 	limit := 50
 	if l := r.URL.Query().Get("limit"); l != "" {
@@ -175,15 +164,4 @@ func (s *Server) handleListSubmissions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, results)
-}
-
-// extractSubmissionID is a helper for extracting {id} from URL paths.
-// Used when Go 1.22+ path value isn't available (e.g., in tests with older patterns).
-func extractSubmissionID(path string) string {
-	// /api/v1/submissions/{id}
-	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
-	if len(parts) >= 4 {
-		return parts[3]
-	}
-	return ""
 }
