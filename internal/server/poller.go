@@ -76,7 +76,7 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 
 	// Update local DB if status changed
 	if sub.Status != localStatus || sub.WorkflowState != workflowState {
-		if err := s.submissions.UpdateStatus(ctx, sub.ID, localStatus, workflowState); err != nil {
+		if err := s.transitionState(ctx, sub.ID, sub.WorkflowState, localStatus, workflowState, nil, ""); err != nil {
 			log.Printf("poller: failed to update status for submission %s: %v", sub.ID, err)
 		} else {
 			log.Printf("poller: submission %s (core_id=%s): %s/%s → %s/%s",

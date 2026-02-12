@@ -174,7 +174,8 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Update submission status if this is the first file upload
 	if sub.Status == "payload_obtained" {
-		if err := s.submissions.UpdateStatus(r.Context(), id, "file_uploaded", "FILES_UPLOADING"); err != nil {
+		userID := userIDFromContext(r.Context())
+		if err := s.transitionState(r.Context(), id, sub.WorkflowState, "file_uploaded", "FILES_UPLOADING", &userID, ""); err != nil {
 			log.Printf("error updating submission status for %s: %v", id, err)
 		}
 	}
@@ -249,7 +250,8 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 
 	checksum := computeCombinedChecksum(files)
 
-	if err := s.submissions.UpdateStatus(r.Context(), id, "file_uploaded", "SUBMIT_PENDING"); err != nil {
+	userID := userIDFromContext(r.Context())
+	if err := s.transitionState(r.Context(), id, sub.WorkflowState, "file_uploaded", "SUBMIT_PENDING", &userID, ""); err != nil {
 		log.Printf("error updating status for %s: %v", id, err)
 	}
 
@@ -261,14 +263,14 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 	})
 	if fdaErr != nil {
 		log.Printf("FDA submit failed for %s: %v", id, fdaErr)
-		s.submissions.UpdateStatus(r.Context(), id, "failed", "SUBMIT_FAILED")
+		s.transitionState(r.Context(), id, "SUBMIT_PENDING", "failed", "SUBMIT_FAILED", &userID, fdaErr.Error())
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA submission failed: " + sanitizeError(fdaErr),
 		})
 		return
 	}
 
-	if err := s.submissions.UpdateStatus(r.Context(), id, "submitted", "SUBMITTED"); err != nil {
+	if err := s.transitionState(r.Context(), id, "SUBMIT_PENDING", "submitted", "SUBMITTED", &userID, ""); err != nil {
 		log.Printf("error updating final status for %s: %v", id, err)
 	}
 

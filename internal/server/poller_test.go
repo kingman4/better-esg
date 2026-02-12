@@ -399,3 +399,95 @@ func TestPollerStartStop(t *testing.T) {
 
 	// If we get here without deadlock or panic, the lifecycle is correct
 }
+
+// --- Workflow State Log Tests ---
+
+func TestWorkflowStateLog_RecordedOnPollerTransition(t *testing.T) {
+	fdaServer := newMockFDAServerWithStatus(t, "ACCEPTED")
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL,
+		UploadBaseURL:   fdaServer.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     fdaclient.EnvTest,
+	})
+
+	srv := newTestServerWithFDA(t, fdaClient)
+	suffix := fmt.Sprintf("wflog-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+
+	subID, _ := setupSubmittedSub(t, srv, orgID, userID, suffix)
+
+	// Run poll — should transition SUBMITTED → ACCEPTED
+	srv.pollAllSubmissions(context.Background())
+
+	// Verify workflow log entry was created
+	entries, err := srv.workflowLog.ListBySubmission(context.Background(), subID)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "expected 1 workflow log entry")
+
+	assert.Equal(t, subID, entries[0].SubmissionID)
+	assert.Equal(t, "SUBMITTED", entries[0].FromState)
+	assert.Equal(t, "ACCEPTED", entries[0].ToState)
+	assert.False(t, entries[0].TriggeredBy.Valid, "poller transitions should have nil triggered_by")
+}
+
+func TestWorkflowStateLog_MultipleTransitions(t *testing.T) {
+	// FDA returns PROCESSING first, then ACCEPTED
+	var callCount atomic.Int64
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
+			n := callCount.Add(1)
+			status := "PROCESSING"
+			if n > 1 {
+				status = "ACCEPTED"
+			}
+			coreID := strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/submissions/")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"core_id": coreID, "status": status,
+				"esgngcode": "ESGNG210", "esgngdescription": "ok",
+				"acknowledgements": []map[string]string{},
+			})
+
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL, UploadBaseURL: fdaServer.URL,
+		ClientID: "id", ClientSecret: "secret", Environment: fdaclient.EnvTest,
+	})
+	srv := newTestServerWithFDA(t, fdaClient)
+	suffix := fmt.Sprintf("wflog-multi-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+
+	subID, _ := setupSubmittedSub(t, srv, orgID, userID, suffix)
+	ctx := context.Background()
+
+	// First poll: SUBMITTED → PROCESSING
+	srv.pollAllSubmissions(ctx)
+	// Second poll: PROCESSING → ACCEPTED
+	srv.pollAllSubmissions(ctx)
+
+	entries, err := srv.workflowLog.ListBySubmission(ctx, subID)
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "expected 2 workflow log entries")
+
+	assert.Equal(t, "SUBMITTED", entries[0].FromState)
+	assert.Equal(t, "PROCESSING", entries[0].ToState)
+
+	assert.Equal(t, "PROCESSING", entries[1].FromState)
+	assert.Equal(t, "ACCEPTED", entries[1].ToState)
+}

@@ -22,6 +22,7 @@ type Server struct {
 	files       *repository.SubmissionFileRepo
 	apiKeys     *repository.APIKeyRepo
 	acks        *repository.AckRepo
+	workflowLog *repository.WorkflowLogRepo
 	fda         *fdaclient.Client
 
 	pollerCancel context.CancelFunc
@@ -66,6 +67,7 @@ func New(cfg Config) (*Server, error) {
 		files:       repository.NewSubmissionFileRepo(db),
 		apiKeys:     repository.NewAPIKeyRepo(db),
 		acks:        repository.NewAckRepo(db),
+		workflowLog: repository.NewWorkflowLogRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -119,6 +121,20 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":   "ok",
 		"database": dbStatus,
 	})
+}
+
+// transitionState updates the submission's status/workflow_state and logs
+// the transition to workflow_state_log. triggeredBy is nil for system actions (e.g. poller).
+// Log failures are warned but don't fail the transition.
+func (s *Server) transitionState(ctx context.Context, subID, fromWorkflow, newStatus, newWorkflow string, triggeredBy *string, errDetails string) error {
+	if err := s.submissions.UpdateStatus(ctx, subID, newStatus, newWorkflow); err != nil {
+		return err
+	}
+	if err := s.workflowLog.Insert(ctx, subID, fromWorkflow, newWorkflow, triggeredBy, errDetails); err != nil {
+		log.Printf("warning: failed to log workflow transition %s→%s for %s: %v",
+			fromWorkflow, newWorkflow, subID, err)
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

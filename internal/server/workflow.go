@@ -76,7 +76,8 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update status to initiated
-	if err := s.submissions.UpdateStatus(r.Context(), id, "initiated", "CREDENTIALS_PENDING"); err != nil {
+	userID := userIDFromContext(r.Context())
+	if err := s.transitionState(r.Context(), id, sub.WorkflowState, "initiated", "CREDENTIALS_PENDING", &userID, ""); err != nil {
 		log.Printf("error updating status for %s: %v", id, err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update submission status"})
 		return
@@ -94,7 +95,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("FDA credential submission failed for %s: %v", id, err)
-		s.submissions.UpdateStatus(r.Context(), id, "failed", "CREDENTIALS_FAILED")
+		s.transitionState(r.Context(), id, "CREDENTIALS_PENDING", "failed", "CREDENTIALS_FAILED", &userID, err.Error())
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA credential submission failed: " + sanitizeError(err),
 		})
@@ -108,7 +109,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.submissions.UpdateStatus(r.Context(), id, "credentials_generated", "PAYLOAD_PENDING"); err != nil {
+	if err := s.transitionState(r.Context(), id, "CREDENTIALS_PENDING", "credentials_generated", "PAYLOAD_PENDING", &userID, ""); err != nil {
 		log.Printf("error updating status for %s: %v", id, err)
 	}
 
@@ -116,7 +117,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	payloadResp, err := s.fda.GetPayload(r.Context())
 	if err != nil {
 		log.Printf("FDA payload request failed for %s: %v", id, err)
-		s.submissions.UpdateStatus(r.Context(), id, "failed", "PAYLOAD_FAILED")
+		s.transitionState(r.Context(), id, "PAYLOAD_PENDING", "failed", "PAYLOAD_FAILED", &userID, err.Error())
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA payload request failed: " + sanitizeError(err),
 		})
@@ -133,7 +134,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.submissions.UpdateStatus(r.Context(), id, "payload_obtained", "UPLOAD_PENDING"); err != nil {
+	if err := s.transitionState(r.Context(), id, "PAYLOAD_PENDING", "payload_obtained", "UPLOAD_PENDING", &userID, ""); err != nil {
 		log.Printf("error updating status for %s: %v", id, err)
 	}
 
