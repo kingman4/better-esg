@@ -977,3 +977,280 @@ func TestSubmitPayload_APIError(t *testing.T) {
 		t.Errorf("expected error to contain ESGNG400, got: %v", err)
 	}
 }
+
+// --- Submission Status Tests ---
+
+func newStatusServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "status-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer status-token" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			coreID := strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/submissions/")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"core_id":          coreID,
+				"status":           "ACCEPTED",
+				"esgngcode":        "ESGNG200",
+				"esgngdescription": "Submission status retrieved",
+				"acknowledgements": []map[string]string{
+					{"acknowledgement_id": "ACK-001", "type": "ACK1"},
+					{"acknowledgement_id": "ACK-002", "type": "ACK2"},
+				},
+			})
+
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/acknowledgements/") && r.Method == http.MethodGet:
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer status-token" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			ackID := strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/acknowledgements/")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"acknowledgement_id": ackID,
+				"type":               "ACK1",
+				"raw_message":        "<ack>raw xml here</ack>",
+				"parsed_data":        map[string]string{"status": "received"},
+				"esgngcode":          "ESGNG200",
+				"esgngdescription":   "Acknowledgement retrieved",
+			})
+
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+}
+
+func TestGetSubmissionStatus_Success(t *testing.T) {
+	server := newStatusServer(t)
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	resp, err := client.GetSubmissionStatus(context.Background(), "CORE-12345")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.CoreID != "CORE-12345" {
+		t.Errorf("expected core_id 'CORE-12345', got %q", resp.CoreID)
+	}
+	if resp.Status != "ACCEPTED" {
+		t.Errorf("expected status 'ACCEPTED', got %q", resp.Status)
+	}
+	if resp.ESGNGCode != "ESGNG200" {
+		t.Errorf("expected esgngcode 'ESGNG200', got %q", resp.ESGNGCode)
+	}
+	if len(resp.Acknowledgements) != 2 {
+		t.Fatalf("expected 2 acknowledgements, got %d", len(resp.Acknowledgements))
+	}
+	if resp.Acknowledgements[0].AcknowledgementID != "ACK-001" {
+		t.Errorf("expected first ack id 'ACK-001', got %q", resp.Acknowledgements[0].AcknowledgementID)
+	}
+}
+
+func TestGetSubmissionStatus_SendsBearerToken(t *testing.T) {
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "my-tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"core_id": "C1", "status": "PENDING", "esgngcode": "ESGNG200",
+			"esgngdescription": "ok", "acknowledgements": []any{},
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetSubmissionStatus(context.Background(), "C1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedAuth != "Bearer my-tok" {
+		t.Errorf("expected 'Bearer my-tok', got %q", receivedAuth)
+	}
+}
+
+func TestGetSubmissionStatus_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode:        "ESGNG404",
+			ESGNGDescription: "Submission not found",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetSubmissionStatus(context.Background(), "NONEXISTENT")
+	if err == nil {
+		t.Fatal("expected error for not found, got nil")
+	}
+	if !strings.Contains(err.Error(), "ESGNG404") {
+		t.Errorf("expected error to contain ESGNG404, got: %v", err)
+	}
+}
+
+func TestGetSubmissionStatus_TokenFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode: "ESGNG403", ESGNGDescription: "Bad credentials",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "bad",
+		ClientSecret:    "bad",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetSubmissionStatus(context.Background(), "C1")
+	if err == nil {
+		t.Fatal("expected error when token fails, got nil")
+	}
+}
+
+// --- Acknowledgement Tests ---
+
+func TestGetAcknowledgement_Success(t *testing.T) {
+	server := newStatusServer(t)
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	resp, err := client.GetAcknowledgement(context.Background(), "ACK-001")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.AcknowledgementID != "ACK-001" {
+		t.Errorf("expected acknowledgement_id 'ACK-001', got %q", resp.AcknowledgementID)
+	}
+	if resp.Type != "ACK1" {
+		t.Errorf("expected type 'ACK1', got %q", resp.Type)
+	}
+	if resp.RawMessage != "<ack>raw xml here</ack>" {
+		t.Errorf("expected raw_message, got %q", resp.RawMessage)
+	}
+	if resp.ESGNGCode != "ESGNG200" {
+		t.Errorf("expected esgngcode 'ESGNG200', got %q", resp.ESGNGCode)
+	}
+}
+
+func TestGetAcknowledgement_SendsBearerToken(t *testing.T) {
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "ack-tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"acknowledgement_id": "A1", "type": "ACK1", "raw_message": "",
+			"parsed_data": map[string]any{}, "esgngcode": "ESGNG200", "esgngdescription": "ok",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetAcknowledgement(context.Background(), "A1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedAuth != "Bearer ack-tok" {
+		t.Errorf("expected 'Bearer ack-tok', got %q", receivedAuth)
+	}
+}
+
+func TestGetAcknowledgement_APIError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode:        "ESGNG404",
+			ESGNGDescription: "Acknowledgement not found",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetAcknowledgement(context.Background(), "NONEXISTENT")
+	if err == nil {
+		t.Fatal("expected error for not found, got nil")
+	}
+	if !strings.Contains(err.Error(), "ESGNG404") {
+		t.Errorf("expected error to contain ESGNG404, got: %v", err)
+	}
+}

@@ -113,6 +113,31 @@ type SubmitResponse struct {
 	ESGNGDescription string `json:"esgngdescription"`
 }
 
+// SubmissionStatusResponse is the JSON response from the submission status endpoint.
+type SubmissionStatusResponse struct {
+	CoreID           string                `json:"core_id"`
+	Status           string                `json:"status"`
+	ESGNGCode        string                `json:"esgngcode"`
+	ESGNGDescription string                `json:"esgngdescription"`
+	Acknowledgements []AcknowledgementRef  `json:"acknowledgements"`
+}
+
+// AcknowledgementRef is a reference to an acknowledgement returned in the status response.
+type AcknowledgementRef struct {
+	AcknowledgementID string `json:"acknowledgement_id"`
+	Type              string `json:"type"`
+}
+
+// AcknowledgementResponse is the JSON response from the acknowledgement endpoint.
+type AcknowledgementResponse struct {
+	AcknowledgementID string         `json:"acknowledgement_id"`
+	Type              string         `json:"type"`
+	RawMessage        string         `json:"raw_message"`
+	ParsedData        map[string]any `json:"parsed_data"`
+	ESGNGCode         string         `json:"esgngcode"`
+	ESGNGDescription  string         `json:"esgngdescription"`
+}
+
 // New creates a new FDA API client.
 func New(cfg Config) *Client {
 	return &Client{
@@ -358,4 +383,76 @@ func (c *Client) SubmitPayload(ctx context.Context, payloadID string, submit Sub
 	}
 
 	return &submitResp, nil
+}
+
+// GetSubmissionStatus retrieves the current status of a submission by core_id.
+// Requires a Bearer token. Returns the status and any available acknowledgement references.
+func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*SubmissionStatusResponse, error) {
+	token, err := c.GetToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring token for status check: %w", err)
+	}
+
+	statusURL := c.config.ExternalBaseURL + "/api/esgng/v1/submissions/" + coreID
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating status request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("status request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("status request returned %d: %s (code: %s)",
+			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+	}
+
+	var statusResp SubmissionStatusResponse
+	if err := json.NewDecoder(resp.Body).Decode(&statusResp); err != nil {
+		return nil, fmt.Errorf("decoding status response: %w", err)
+	}
+
+	return &statusResp, nil
+}
+
+// GetAcknowledgement retrieves a specific acknowledgement by ID.
+// Requires a Bearer token. Returns the acknowledgement details including raw message and parsed data.
+func (c *Client) GetAcknowledgement(ctx context.Context, acknowledgementID string) (*AcknowledgementResponse, error) {
+	token, err := c.GetToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring token for acknowledgement: %w", err)
+	}
+
+	ackURL := c.config.ExternalBaseURL + "/api/esgng/v1/acknowledgements/" + acknowledgementID
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ackURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating acknowledgement request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("acknowledgement request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errResp errorResponse
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return nil, fmt.Errorf("acknowledgement request returned %d: %s (code: %s)",
+			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+	}
+
+	var ackResp AcknowledgementResponse
+	if err := json.NewDecoder(resp.Body).Decode(&ackResp); err != nil {
+		return nil, fmt.Errorf("decoding acknowledgement response: %w", err)
+	}
+
+	return &ackResp, nil
 }
