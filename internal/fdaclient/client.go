@@ -115,11 +115,11 @@ type SubmitResponse struct {
 
 // SubmissionStatusResponse is the JSON response from the submission status endpoint.
 type SubmissionStatusResponse struct {
-	CoreID           string                `json:"core_id"`
-	Status           string                `json:"status"`
-	ESGNGCode        string                `json:"esgngcode"`
-	ESGNGDescription string                `json:"esgngdescription"`
-	Acknowledgements []AcknowledgementRef  `json:"acknowledgements"`
+	CoreID           string               `json:"core_id"`
+	Status           string               `json:"status"`
+	ESGNGCode        string               `json:"esgngcode"`
+	ESGNGDescription string               `json:"esgngdescription"`
+	Acknowledgements []AcknowledgementRef `json:"acknowledgements"`
 }
 
 // AcknowledgementRef is a reference to an acknowledgement returned in the status response.
@@ -171,6 +171,7 @@ func (c *Client) GetToken(ctx context.Context) (string, error) {
 }
 
 // fetchToken requests a new OAuth2 token from the FDA token endpoint.
+// Retries transient failures with exponential backoff (1s, 2s, 4s, 8s).
 func (c *Client) fetchToken(ctx context.Context) (string, int, error) {
 	tokenURL := c.config.ExternalBaseURL + "/as/token.oauth2"
 
@@ -179,36 +180,50 @@ func (c *Client) fetchToken(ctx context.Context) (string, int, error) {
 	form.Set("client_secret", c.config.ClientSecret)
 	form.Set("grant_type", "client_credentials")
 	form.Set("scope", "openid profile")
+	formBody := form.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", 0, fmt.Errorf("creating token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	var token string
+	var expiresIn int
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", 0, fmt.Errorf("token request failed: %w", err)
-	}
-	defer resp.Body.Close()
+	err := retryDo(ctx, retryToken, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(formBody))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating token request: %w", err)}
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return "", 0, fmt.Errorf("token request returned %d: %s (code: %s)",
-			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
-	}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("token request failed: %w", err)
+		}
+		defer resp.Body.Close()
 
-	var tokenResp tokenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", 0, fmt.Errorf("decoding token response: %w", err)
-	}
+		if resp.StatusCode != http.StatusOK {
+			var errResp errorResponse
+			json.NewDecoder(resp.Body).Decode(&errResp)
+			fdaErr := fmt.Errorf("token request returned %d: %s (code: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
 
-	if tokenResp.AccessToken == "" {
-		return "", 0, fmt.Errorf("empty access token in response")
-	}
+		var tokenResp tokenResponse
+		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding token response: %w", err)}
+		}
 
-	return tokenResp.AccessToken, tokenResp.ExpiresIn, nil
+		if tokenResp.AccessToken == "" {
+			return &permanentError{err: fmt.Errorf("empty access token in response")}
+		}
+
+		token = tokenResp.AccessToken
+		expiresIn = tokenResp.ExpiresIn
+		return nil
+	})
+
+	return token, expiresIn, err
 }
 
 // CredentialPath returns the FDA credential submission endpoint path
@@ -224,89 +239,111 @@ func (c *Client) CredentialPath() string {
 // It acquires a Bearer token automatically, then POSTs the credential request.
 // Returns the temporary credentials (core_id, temp_user, temp_password) needed
 // for subsequent file upload and submission steps.
+// Retries transient failures with exponential backoff (2s, 4s, 8s).
 func (c *Client) SubmitCredentials(ctx context.Context, cred CredentialRequest) (*CredentialResponse, error) {
 	token, err := c.GetToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("acquiring token for credential submission: %w", err)
 	}
 
-	body, err := json.Marshal(cred)
+	bodyBytes, err := json.Marshal(cred)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling credential request: %w", err)
 	}
 
 	credURL := c.config.ExternalBaseURL + c.CredentialPath()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, credURL, bytes.NewReader(body))
+
+	var result CredentialResponse
+	err = retryDo(ctx, retryDefault, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, credURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating credential request: %w", err)}
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("credential request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errResp errorResponse
+			json.NewDecoder(resp.Body).Decode(&errResp)
+			fdaErr := fmt.Errorf("credential request returned %d: %s (code: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding credential response: %w", err)}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("creating credential request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("credential request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return nil, fmt.Errorf("credential request returned %d: %s (code: %s)",
-			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
-	}
-
-	var credResp CredentialResponse
-	if err := json.NewDecoder(resp.Body).Decode(&credResp); err != nil {
-		return nil, fmt.Errorf("decoding credential response: %w", err)
-	}
-
-	return &credResp, nil
+	return &result, nil
 }
 
 // GetPayload requests a new payload ID from the FDA upload API.
 // This endpoint requires NO authentication.
 // Returns the payload ID and links for subsequent file upload and submission.
+// Retries transient failures with exponential backoff (2s, 4s, 8s).
 func (c *Client) GetPayload(ctx context.Context) (*PayloadResponse, error) {
 	payloadURL := c.config.UploadBaseURL + "/rest/forms/v1/fileupload/payload"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, payloadURL, nil)
+	var result PayloadResponse
+	err := retryDo(ctx, retryDefault, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, payloadURL, nil)
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating payload request: %w", err)}
+		}
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("payload request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errResp errorResponse
+			json.NewDecoder(resp.Body).Decode(&errResp)
+			fdaErr := fmt.Errorf("payload request returned %d: %s (code: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding payload response: %w", err)}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("creating payload request: %w", err)
+		return nil, err
 	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("payload request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return nil, fmt.Errorf("payload request returned %d: %s (code: %s)",
-			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
-	}
-
-	var payloadResp PayloadResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payloadResp); err != nil {
-		return nil, fmt.Errorf("decoding payload response: %w", err)
-	}
-
-	return &payloadResp, nil
+	return &result, nil
 }
 
 // UploadFile uploads a single file to an existing payload via the FDA upload API.
 // Requires a Bearer token. The file is sent as multipart/form-data.
+// Retries transient failures with linear backoff (5s, 10s, 15s, 20s, 25s).
 func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, file io.Reader) (*UploadResponse, error) {
 	token, err := c.GetToken(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("acquiring token for file upload: %w", err)
 	}
 
-	// Build multipart body
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
+	// Build multipart body once — held in memory for retries
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("file", fileName)
 	if err != nil {
 		return nil, fmt.Errorf("creating multipart form file: %w", err)
@@ -318,75 +355,99 @@ func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, fil
 		return nil, fmt.Errorf("closing multipart writer: %w", err)
 	}
 
+	bodyBytes := buf.Bytes()
+	contentType := writer.FormDataContentType()
 	uploadURL := c.config.UploadBaseURL + "/rest/forms/v1/fileupload/payload/" + payloadID + "/file"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, &body)
+
+	var result UploadResponse
+	err = retryDo(ctx, retryUpload, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating upload request: %w", err)}
+		}
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("upload request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errResp errorResponse
+			json.NewDecoder(resp.Body).Decode(&errResp)
+			fdaErr := fmt.Errorf("upload request returned %d: %s (code: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding upload response: %w", err)}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("creating upload request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("upload request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return nil, fmt.Errorf("upload request returned %d: %s (code: %s)",
-			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
-	}
-
-	var uploadResp UploadResponse
-	if err := json.NewDecoder(resp.Body).Decode(&uploadResp); err != nil {
-		return nil, fmt.Errorf("decoding upload response: %w", err)
-	}
-
-	return &uploadResp, nil
+	return &result, nil
 }
 
 // SubmitPayload finalizes a file submission to the FDA.
 // This endpoint does NOT use a Bearer token. Instead, it authenticates via
 // temp_user and temp_password (from the credential step) in the JSON body,
 // along with the sha256_checksum of the uploaded file(s).
+// Retries transient failures with exponential backoff (2s, 4s, 8s).
 func (c *Client) SubmitPayload(ctx context.Context, payloadID string, submit SubmitRequest) (*SubmitResponse, error) {
-	body, err := json.Marshal(submit)
+	bodyBytes, err := json.Marshal(submit)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling submit request: %w", err)
 	}
 
 	submitURL := c.config.UploadBaseURL + "/rest/forms/v1/fileupload/payload/" + payloadID + "/submit"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, submitURL, bytes.NewReader(body))
+
+	var result SubmitResponse
+	err = retryDo(ctx, retryDefault, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, submitURL, bytes.NewReader(bodyBytes))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating submit request: %w", err)}
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("submit request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errResp errorResponse
+			json.NewDecoder(resp.Body).Decode(&errResp)
+			fdaErr := fmt.Errorf("submit request returned %d: %s (code: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding submit response: %w", err)}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("creating submit request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("submit request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return nil, fmt.Errorf("submit request returned %d: %s (code: %s)",
-			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
-	}
-
-	var submitResp SubmitResponse
-	if err := json.NewDecoder(resp.Body).Decode(&submitResp); err != nil {
-		return nil, fmt.Errorf("decoding submit response: %w", err)
-	}
-
-	return &submitResp, nil
+	return &result, nil
 }
 
 // GetSubmissionStatus retrieves the current status of a submission by core_id.
 // Requires a Bearer token. Returns the status and any available acknowledgement references.
+// Retries transient failures with exponential backoff (2s, 4s, 8s).
 func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*SubmissionStatusResponse, error) {
 	token, err := c.GetToken(ctx)
 	if err != nil {
@@ -394,35 +455,46 @@ func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*Submi
 	}
 
 	statusURL := c.config.ExternalBaseURL + "/api/esgng/v1/submissions/" + coreID
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
+
+	var result SubmissionStatusResponse
+	err = retryDo(ctx, retryDefault, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating status request: %w", err)}
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("status request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errResp errorResponse
+			json.NewDecoder(resp.Body).Decode(&errResp)
+			fdaErr := fmt.Errorf("status request returned %d: %s (code: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding status response: %w", err)}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("creating status request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("status request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return nil, fmt.Errorf("status request returned %d: %s (code: %s)",
-			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
-	}
-
-	var statusResp SubmissionStatusResponse
-	if err := json.NewDecoder(resp.Body).Decode(&statusResp); err != nil {
-		return nil, fmt.Errorf("decoding status response: %w", err)
-	}
-
-	return &statusResp, nil
+	return &result, nil
 }
 
 // GetAcknowledgement retrieves a specific acknowledgement by ID.
 // Requires a Bearer token. Returns the acknowledgement details including raw message and parsed data.
+// Retries transient failures with exponential backoff (2s, 4s, 8s).
 func (c *Client) GetAcknowledgement(ctx context.Context, acknowledgementID string) (*AcknowledgementResponse, error) {
 	token, err := c.GetToken(ctx)
 	if err != nil {
@@ -430,29 +502,39 @@ func (c *Client) GetAcknowledgement(ctx context.Context, acknowledgementID strin
 	}
 
 	ackURL := c.config.ExternalBaseURL + "/api/esgng/v1/acknowledgements/" + acknowledgementID
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ackURL, nil)
+
+	var result AcknowledgementResponse
+	err = retryDo(ctx, retryDefault, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ackURL, nil)
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating acknowledgement request: %w", err)}
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("acknowledgement request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errResp errorResponse
+			json.NewDecoder(resp.Body).Decode(&errResp)
+			fdaErr := fmt.Errorf("acknowledgement request returned %d: %s (code: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding acknowledgement response: %w", err)}
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("creating acknowledgement request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("acknowledgement request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errResp errorResponse
-		json.NewDecoder(resp.Body).Decode(&errResp)
-		return nil, fmt.Errorf("acknowledgement request returned %d: %s (code: %s)",
-			resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
-	}
-
-	var ackResp AcknowledgementResponse
-	if err := json.NewDecoder(resp.Body).Decode(&ackResp); err != nil {
-		return nil, fmt.Errorf("decoding acknowledgement response: %w", err)
-	}
-
-	return &ackResp, nil
+	return &result, nil
 }

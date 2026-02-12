@@ -86,8 +86,12 @@ func TestMain(m *testing.M) {
 		log.Fatalf("running migrations: %v", err)
 	}
 
+	// Disable real retry delays — poller tests don't test retry behavior.
+	restoreRetry := fdaclient.SetFastRetryForTest()
+
 	code := m.Run()
 
+	restoreRetry()
 	testDB.Close()
 	testContainer.Terminate(ctx)
 	os.Exit(code)
