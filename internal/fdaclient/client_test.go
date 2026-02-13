@@ -1336,3 +1336,335 @@ func TestGetAcknowledgement_APIError(t *testing.T) {
 		t.Errorf("expected error to contain ESGNG404, got: %v", err)
 	}
 }
+
+// --- GetCompanyInfo Tests ---
+
+// newCompanyInfoServer creates a mock FDA server that handles token + company info.
+// responseBody is the raw JSON returned for GET /api/esgng/v1/companies.
+func newCompanyInfoServer(t *testing.T, statusCode int, responseBody string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "company-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+
+		case r.URL.Path == "/api/esgng/v1/companies" && r.Method == http.MethodGet:
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer company-token" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(statusCode)
+			w.Write([]byte(responseBody))
+
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+}
+
+func TestGetCompanyInfo_SingleObject(t *testing.T) {
+	server := newCompanyInfoServer(t, http.StatusOK, `{
+		"user_id": 4909,
+		"user_email": "user@pharma.com",
+		"company_id": 5842,
+		"company_name": "Pharma Corp",
+		"company_status": "ACTIVE",
+		"esgngcode": "ESGNG200",
+		"esgngdescription": "Success"
+	}`)
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	resp, err := client.GetCompanyInfo(context.Background(), "user@pharma.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.UserID != 4909 {
+		t.Errorf("expected user_id 4909, got %d", resp.UserID)
+	}
+	if resp.CompanyID != 5842 {
+		t.Errorf("expected company_id 5842, got %d", resp.CompanyID)
+	}
+	if resp.CompanyName != "Pharma Corp" {
+		t.Errorf("expected company_name 'Pharma Corp', got %q", resp.CompanyName)
+	}
+}
+
+func TestGetCompanyInfo_ArrayResponse(t *testing.T) {
+	server := newCompanyInfoServer(t, http.StatusOK, `[{
+		"user_id": 1001,
+		"user_email": "user@generic.com",
+		"company_id": 2002,
+		"company_name": "Generic Inc",
+		"company_status": "ACTIVE",
+		"esgngcode": "ESGNG200",
+		"esgngdescription": "Success"
+	}]`)
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	resp, err := client.GetCompanyInfo(context.Background(), "user@generic.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.UserID != 1001 {
+		t.Errorf("expected user_id 1001, got %d", resp.UserID)
+	}
+	if resp.CompanyID != 2002 {
+		t.Errorf("expected company_id 2002, got %d", resp.CompanyID)
+	}
+	if resp.CompanyName != "Generic Inc" {
+		t.Errorf("expected company_name 'Generic Inc', got %q", resp.CompanyName)
+	}
+}
+
+func TestGetCompanyInfo_EmptyArray(t *testing.T) {
+	server := newCompanyInfoServer(t, http.StatusOK, `[]`)
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetCompanyInfo(context.Background(), "nobody@example.com")
+	if err == nil {
+		t.Fatal("expected error for empty array, got nil")
+	}
+	if !strings.Contains(err.Error(), "no company found") {
+		t.Errorf("expected 'no company found' error, got: %v", err)
+	}
+}
+
+func TestGetCompanyInfo_ZeroCompanyID(t *testing.T) {
+	server := newCompanyInfoServer(t, http.StatusOK, `{
+		"user_id": 100,
+		"user_email": "user@example.com",
+		"company_id": 0,
+		"company_name": "",
+		"company_status": ""
+	}`)
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetCompanyInfo(context.Background(), "user@example.com")
+	if err == nil {
+		t.Fatal("expected error for zero company_id, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty company_id") {
+		t.Errorf("expected 'empty company_id' error, got: %v", err)
+	}
+}
+
+func TestGetCompanyInfo_APIError(t *testing.T) {
+	server := newCompanyInfoServer(t, http.StatusNotFound, `{
+		"esgngcode": "ESGNG404",
+		"esgngdescription": "User not found"
+	}`)
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetCompanyInfo(context.Background(), "unknown@example.com")
+	if err == nil {
+		t.Fatal("expected error for 404, got nil")
+	}
+	if !strings.Contains(err.Error(), "404") {
+		t.Errorf("expected error to contain status code, got: %v", err)
+	}
+}
+
+func TestGetCompanyInfo_SendsBearerAndAccept(t *testing.T) {
+	var receivedAuth, receivedAccept, receivedEmail string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "ci-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		receivedAuth = r.Header.Get("Authorization")
+		receivedAccept = r.Header.Get("Accept")
+		receivedEmail = r.URL.Query().Get("user_email")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"user_id": 1, "company_id": 1, "company_name": "X",
+			"esgngcode": "ESGNG200", "esgngdescription": "ok",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetCompanyInfo(context.Background(), "test@example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedAuth != "Bearer ci-token" {
+		t.Errorf("expected 'Bearer ci-token', got %q", receivedAuth)
+	}
+	if receivedAccept != "application/json" {
+		t.Errorf("expected Accept 'application/json', got %q", receivedAccept)
+	}
+	if receivedEmail != "test@example.com" {
+		t.Errorf("expected user_email 'test@example.com', got %q", receivedEmail)
+	}
+}
+
+func TestGetCompanyInfo_TokenFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(errorResponse{
+			ESGNGCode: "ESGNG403", ESGNGDescription: "Bad credentials",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "bad",
+		ClientSecret:    "bad",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetCompanyInfo(context.Background(), "test@example.com")
+	if err == nil {
+		t.Fatal("expected error when token fails, got nil")
+	}
+}
+
+// --- Token ESGNG-in-200 Tests ---
+
+func TestGetToken_ESGNGErrorIn200(t *testing.T) {
+	// Simulates FDA returning ESGNG error with HTTP 200
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"esgngcode":        "ESGNG403",
+			"esgngdescription": "Client ID is not associated with a valid user account.",
+			"message":          "Bad request",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "invalid-id",
+		ClientSecret:    "some-secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.GetToken(context.Background())
+	if err == nil {
+		t.Fatal("expected error for ESGNG error in 200 response, got nil")
+	}
+	if !strings.Contains(err.Error(), "ESGNG403") {
+		t.Errorf("expected error to contain ESGNG403, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Client ID is not associated") {
+		t.Errorf("expected error to contain description, got: %v", err)
+	}
+}
+
+// --- SubmissionName in CredentialRequest ---
+
+func TestSubmitCredentials_SendsSubmissionName(t *testing.T) {
+	var receivedReq CredentialRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/as/token.oauth2" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "tok", "token_type": "Bearer", "expires_in": 3600,
+			})
+			return
+		}
+		json.NewDecoder(r.Body).Decode(&receivedReq)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"core_id": "CORE-1", "temp_user": "u", "temp_password": "p",
+			"esgngcode": "ESGNG210", "esgngdescription": "ok",
+		})
+	}))
+	defer server.Close()
+
+	client := New(Config{
+		ExternalBaseURL: server.URL,
+		ClientID:        "id",
+		ClientSecret:    "secret",
+		Environment:     EnvTest,
+	})
+
+	_, err := client.SubmitCredentials(context.Background(), CredentialRequest{
+		UserID:             "user@x.com",
+		FDACenter:          "CDER",
+		CompanyID:          "C1",
+		SubmissionType:     "ANDA",
+		SubmissionName:     "my-report.xml",
+		SubmissionProtocol: "API",
+		FileCount:          1,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if receivedReq.SubmissionName != "my-report.xml" {
+		t.Errorf("expected submission_name 'my-report.xml', got %q", receivedReq.SubmissionName)
+	}
+}
+
+// --- truncate helper ---
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		input string
+		n     int
+		want  string
+	}{
+		{"short", 10, "short"},
+		{"exactly10!", 10, "exactly10!"},
+		{"this is too long", 10, "this is to..."},
+		{"", 5, ""},
+	}
+	for _, tt := range tests {
+		got := truncate(tt.input, tt.n)
+		if got != tt.want {
+			t.Errorf("truncate(%q, %d) = %q, want %q", tt.input, tt.n, got, tt.want)
+		}
+	}
+}
