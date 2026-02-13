@@ -7,11 +7,16 @@ import (
 )
 
 // withAuth wraps a handler with API key authentication.
-// It extracts the Bearer token from the Authorization header,
-// validates it against the api_keys table, and injects org_id/user_id/role
-// into the request context.
+// When auth is disabled, it injects the default org/user and passes through.
+// Otherwise it validates the Bearer token against the api_keys table.
 func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.authDisabled {
+			ctx := withAuthContext(r.Context(), s.defaultOrgID, s.defaultUserID, "admin")
+			next(w, r.WithContext(ctx))
+			return
+		}
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "missing Authorization header"})

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -10,7 +11,8 @@ import (
 )
 
 // submitToFDARequest is the JSON body for POST /api/v1/submissions/{id}/submit.
-// org_id comes from the authenticated API key context.
+// All fields are optional — if omitted, the server uses FDA_USER_EMAIL from config
+// to auto-resolve user_id and company_id via the FDA GetCompanyInfo API.
 type submitToFDARequest struct {
 	UserEmail string `json:"user_email"`
 	CompanyID string `json:"company_id"`
@@ -44,15 +46,18 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 
 	orgID := orgIDFromContext(r.Context())
 
+	// Parse optional request body (user_email / company_id overrides)
 	var req submitToFDARequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-		return
-	}
+	json.NewDecoder(r.Body).Decode(&req) // ignore errors — body is optional
 
-	if req.UserEmail == "" || req.CompanyID == "" {
+	// Resolve user_email: request body → server config
+	userEmail := req.UserEmail
+	if userEmail == "" {
+		userEmail = s.fdaUserEmail
+	}
+	if userEmail == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
-			"error": "user_email and company_id are required",
+			"error": "user_email not provided and FDA_USER_EMAIL not configured",
 		})
 		return
 	}
@@ -83,12 +88,34 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Submit credentials to FDA
+	// 2a. Resolve FDA user_id and company_id
+	fdaUserID := req.UserEmail   // fallback: use email as user_id (legacy behavior)
+	fdaCompanyID := req.CompanyID
+
+	if fdaCompanyID == "" {
+		// Auto-resolve via GetCompanyInfo
+		companyInfo, err := s.fda.GetCompanyInfo(r.Context(), userEmail)
+		if err != nil {
+			log.Printf("FDA GetCompanyInfo failed for %s: %v", userEmail, err)
+			s.transitionState(r.Context(), id, "CREDENTIALS_PENDING", "failed", "CREDENTIALS_FAILED", &userID, err.Error())
+			writeJSON(w, http.StatusBadGateway, map[string]string{
+				"error": "failed to resolve FDA company info: " + sanitizeError(err),
+			})
+			return
+		}
+		fdaUserID = fmt.Sprintf("%d", companyInfo.UserID)
+		fdaCompanyID = fmt.Sprintf("%d", companyInfo.CompanyID)
+		log.Printf("resolved FDA IDs for %s: user_id=%s company_id=%s (%s)",
+			userEmail, fdaUserID, fdaCompanyID, companyInfo.CompanyName)
+	}
+
+	// 2b. Submit credentials to FDA
 	credResp, err := s.fda.SubmitCredentials(r.Context(), fdaclient.CredentialRequest{
-		UserID:             req.UserEmail,
+		UserID:             fdaUserID,
 		FDACenter:          stringOrDefault(sub.FDACenter.String, "CDER"),
-		CompanyID:          req.CompanyID,
+		CompanyID:          fdaCompanyID,
 		SubmissionType:     sub.SubmissionType,
+		SubmissionName:     sub.SubmissionName,
 		SubmissionProtocol: sub.SubmissionProtocol,
 		FileCount:          sub.FileCount,
 		Description:        sub.Description.String,
@@ -147,15 +174,21 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// sanitizeError returns the error message without exposing internal details.
-// In production, this would strip sensitive info. For now, pass through FDA error codes.
+// sanitizeError returns the error message with internal Go details stripped.
+// Preserves HTTP status codes and FDA error descriptions. Strips stack traces
+// and internal error wrapping that would confuse API consumers.
 func sanitizeError(err error) string {
 	msg := err.Error()
-	// Only expose FDA error codes, not internal details
+	// Strip nested Go error wrapping prefixes (e.g. "acquiring token for company info: ")
+	// but preserve the actual FDA/HTTP error at the end
+	if idx := strings.LastIndex(msg, "returned "); idx >= 0 {
+		return msg[idx:]
+	}
+	// Pass through FDA error codes as-is
 	if strings.Contains(msg, "ESGNG") {
 		return msg
 	}
-	return "internal error"
+	return msg
 }
 
 func stringOrDefault(s, fallback string) string {

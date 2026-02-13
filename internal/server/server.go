@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -23,7 +24,13 @@ type Server struct {
 	apiKeys     *repository.APIKeyRepo
 	acks        *repository.AckRepo
 	workflowLog *repository.WorkflowLogRepo
-	fda         *fdaclient.Client
+	fda          *fdaclient.Client
+	fdaUserEmail string // for auto-resolving user_id + company_id via GetCompanyInfo
+
+	// When true, API key auth is skipped and a default org/user is used.
+	authDisabled bool
+	defaultOrgID string
+	defaultUserID string
 
 	pollerCancel context.CancelFunc
 }
@@ -36,8 +43,10 @@ type Config struct {
 	FDAClientID        string
 	FDAClientSecret    string
 	FDAEnvironment     string        // "prod" or "test"
+	FDAUserEmail       string        // email for auto-resolving user_id + company_id
 	EncryptionKey      []byte        // 32 bytes for AES-256-GCM
 	StatusPollInterval time.Duration // how often to poll FDA for in-flight submissions (0 = disabled)
+	AuthDisabled       bool          // when true, skip API key auth and use a default org/user
 }
 
 // New creates a new Server, runs migrations, and sets up routes.
@@ -75,6 +84,13 @@ func New(cfg Config) (*Server, error) {
 			ClientSecret:    cfg.FDAClientSecret,
 			Environment:     fdaEnv,
 		}),
+		fdaUserEmail: cfg.FDAUserEmail,
+	}
+	if cfg.AuthDisabled {
+		if err := s.initDefaultOrgUser(); err != nil {
+			return nil, fmt.Errorf("initializing default org/user: %w", err)
+		}
+		log.Println("auth disabled — all requests use default org/user")
 	}
 	s.routes()
 
@@ -122,6 +138,32 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":   "ok",
 		"database": dbStatus,
 	})
+}
+
+// initDefaultOrgUser ensures a default organization and user exist for
+// auth-disabled mode. Stores their IDs on the server so withAuth can
+// inject them into every request context.
+func (s *Server) initDefaultOrgUser() error {
+	ctx := context.Background()
+
+	err := s.db.QueryRowContext(ctx,
+		`INSERT INTO organizations (name, slug) VALUES ('Default', 'default')
+		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+		 RETURNING id`).Scan(&s.defaultOrgID)
+	if err != nil {
+		return fmt.Errorf("creating default organization: %w", err)
+	}
+
+	err = s.db.QueryRowContext(ctx,
+		`INSERT INTO users (org_id, email, role) VALUES ($1, 'admin@localhost', 'admin')
+		 ON CONFLICT (org_id, email) DO UPDATE SET role = EXCLUDED.role
+		 RETURNING id`, s.defaultOrgID).Scan(&s.defaultUserID)
+	if err != nil {
+		return fmt.Errorf("creating default user: %w", err)
+	}
+
+	s.authDisabled = true
+	return nil
 }
 
 // transitionState updates the submission's status/workflow_state and logs

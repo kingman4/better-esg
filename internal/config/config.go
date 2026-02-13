@@ -17,12 +17,16 @@ type Config struct {
 	FDAClientID        string
 	FDAClientSecret    string
 	FDAEnvironment     string // "prod" or "test"
+	FDAUserEmail       string // email for GetCompanyInfo lookup (resolves user_id + company_id)
 
 	// Encryption — 32-byte key for AES-256-GCM (hex-encoded in env var)
 	EncryptionKey []byte
 
 	// Status poller — how often to poll FDA for in-flight submission updates
 	StatusPollInterval time.Duration
+
+	// When true, API key auth is skipped (local dev convenience)
+	AuthDisabled bool
 }
 
 func Load() (*Config, error) {
@@ -69,6 +73,8 @@ func Load() (*Config, error) {
 		pollInterval = parsed
 	}
 
+	authDisabled := os.Getenv("AUTH_DISABLED") == "true"
+
 	return &Config{
 		Port:               port,
 		DatabaseURL:        dbURL,
@@ -77,8 +83,10 @@ func Load() (*Config, error) {
 		FDAClientID:        os.Getenv("FDA_CLIENT_ID"),
 		FDAClientSecret:    os.Getenv("FDA_CLIENT_SECRET"),
 		FDAEnvironment:     fdaEnv,
+		FDAUserEmail:       os.Getenv("FDA_USER_EMAIL"),
 		EncryptionKey:      encKey,
 		StatusPollInterval: pollInterval,
+		AuthDisabled:       authDisabled,
 	}, nil
 }
 

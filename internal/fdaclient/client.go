@@ -63,6 +63,7 @@ type CredentialRequest struct {
 	FDACenter          string `json:"fda_center"`
 	CompanyID          string `json:"company_id"`
 	SubmissionType     string `json:"submission_type"`
+	SubmissionName     string `json:"submission_name"`
 	SubmissionProtocol string `json:"submission_protocol"`
 	FileCount          int    `json:"file_count"`
 	Description        string `json:"description,omitempty"`
@@ -108,6 +109,18 @@ type SubmitRequest struct {
 // SubmitResponse is the JSON response from the FDA file submit endpoint.
 type SubmitResponse struct {
 	CoreID           string `json:"core_id"`
+	ESGNGCode        string `json:"esgngcode"`
+	ESGNGDescription string `json:"esgngdescription"`
+}
+
+// CompanyInfoResponse is the JSON response from the GetCompanyInfo endpoint.
+// Given a user_email, returns the user_id and company_id needed for credential submission.
+type CompanyInfoResponse struct {
+	UserID           int    `json:"user_id"`
+	UserEmail        string `json:"user_email"`
+	CompanyID        int    `json:"company_id"`
+	CompanyName      string `json:"company_name"`
+	CompanyStatus    string `json:"company_status"`
 	ESGNGCode        string `json:"esgngcode"`
 	ESGNGDescription string `json:"esgngdescription"`
 }
@@ -197,24 +210,37 @@ func (c *Client) fetchToken(ctx context.Context) (string, int, error) {
 		}
 		defer resp.Body.Close()
 
+		// Read body once for both error and success paths
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("reading token response: %w", err)}
+		}
+
 		if resp.StatusCode != http.StatusOK {
 			var errResp errorResponse
-			json.NewDecoder(resp.Body).Decode(&errResp)
-			fdaErr := fmt.Errorf("token request returned %d: %s (code: %s)",
-				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			json.Unmarshal(bodyBytes, &errResp)
+			fdaErr := fmt.Errorf("token request returned %d: %s (code: %s, body: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, truncate(string(bodyBytes), 500))
 			if isRetryable(resp.StatusCode) {
 				return &retryableError{err: fdaErr}
 			}
 			return &permanentError{err: fdaErr}
 		}
 
+		// FDA sometimes returns ESGNG errors with HTTP 200 — check for that first
+		var errResp errorResponse
+		if json.Unmarshal(bodyBytes, &errResp) == nil && errResp.ESGNGCode != "" {
+			return &permanentError{err: fmt.Errorf("token request failed: %s — %s",
+				errResp.ESGNGCode, errResp.ESGNGDescription)}
+		}
+
 		var tokenResp tokenResponse
-		if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-			return &permanentError{err: fmt.Errorf("decoding token response: %w", err)}
+		if err := json.Unmarshal(bodyBytes, &tokenResp); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding token response: %w (body: %s)", err, truncate(string(bodyBytes), 500))}
 		}
 
 		if tokenResp.AccessToken == "" {
-			return &permanentError{err: fmt.Errorf("empty access token in response")}
+			return &permanentError{err: fmt.Errorf("empty access token in response (body: %s)", truncate(string(bodyBytes), 500))}
 		}
 
 		token = tokenResp.AccessToken
@@ -454,6 +480,90 @@ func (c *Client) SubmitPayload(ctx context.Context, payloadID string, submit Sub
 		return nil, err
 	}
 	return &result, nil
+}
+
+// GetCompanyInfo retrieves the user_id and company_id for a given email address.
+// These IDs are required by the credential submission endpoint.
+// Endpoint: GET /api/esgng/v1/companies?user_email={email}
+// Requires a Bearer token.
+// The FDA endpoint may return a single object or an array — we handle both.
+// Retries transient failures with exponential backoff (2s, 4s, 8s).
+func (c *Client) GetCompanyInfo(ctx context.Context, email string) (*CompanyInfoResponse, error) {
+	token, err := c.GetToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("acquiring token for company info: %w", err)
+	}
+
+	companyURL := c.config.ExternalBaseURL + "/api/esgng/v1/companies?user_email=" + url.QueryEscape(email)
+
+	var result CompanyInfoResponse
+	err = retryDo(ctx, retryDefault, func() error {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, companyURL, nil)
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("creating company info request: %w", err)}
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("company info request failed: %w", err)
+		}
+		defer resp.Body.Close()
+
+		// Read the full body for better error reporting and flexible parsing
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("reading company info response: %w", err)}
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			// Try to parse as FDA error response
+			var errResp errorResponse
+			json.Unmarshal(bodyBytes, &errResp)
+			fdaErr := fmt.Errorf("company info request returned %d: %s (code: %s, body: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, truncate(string(bodyBytes), 500))
+			if isRetryable(resp.StatusCode) {
+				return &retryableError{err: fdaErr}
+			}
+			return &permanentError{err: fdaErr}
+		}
+
+		// FDA may return a single object {...} or an array [{...}]
+		// Try array first since the endpoint is /companies (plural)
+		trimmed := bytes.TrimSpace(bodyBytes)
+		if len(trimmed) > 0 && trimmed[0] == '[' {
+			var arr []CompanyInfoResponse
+			if err := json.Unmarshal(trimmed, &arr); err != nil {
+				return &permanentError{err: fmt.Errorf("decoding company info array: %w (body: %s)", err, truncate(string(bodyBytes), 500))}
+			}
+			if len(arr) == 0 {
+				return &permanentError{err: fmt.Errorf("no company found for email %s", email)}
+			}
+			result = arr[0]
+		} else {
+			if err := json.Unmarshal(trimmed, &result); err != nil {
+				return &permanentError{err: fmt.Errorf("decoding company info response: %w (body: %s)", err, truncate(string(bodyBytes), 500))}
+			}
+		}
+
+		if result.CompanyID == 0 {
+			return &permanentError{err: fmt.Errorf("company info returned empty company_id for email %s (body: %s)", email, truncate(string(bodyBytes), 500))}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// truncate returns the first n characters of s, appending "..." if truncated.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 // GetSubmissionStatus retrieves the current status of a submission by core_id.

@@ -1,5 +1,6 @@
 # Binaries
 /server
+/esg-cli
 *.exe
 
 # Environment

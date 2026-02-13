@@ -7,18 +7,16 @@ Licensed under Apache 2.0.
 ## Quick Start
 
 ```bash
-# 1. Clone and start services
 git clone https://github.com/kingman4/better-esg.git
 cd better-esg
-cp .env.example .env          # edit with your FDA credentials
-docker compose up --build      # starts server on :8080 + Postgres
+cp .env.example .env    # edit with your FDA credentials
+make up                  # builds CLI + starts server on :8080 + Postgres
 
-# 2. Verify
-curl http://localhost:8080/health
-
-# 3. Build the CLI
-make build-cli
+# In another terminal:
+./esg-cli send --file report.xml
 ```
+
+One command to submit a file to FDA. No Go installation required — the CLI is cross-compiled via Docker.
 
 ## Architecture
 
@@ -52,6 +50,7 @@ All configuration is via environment variables. Copy `.env.example` and fill in 
 |---|---|---|
 | `FDA_CLIENT_ID` | | OAuth2 client ID for FDA ESG NextGen |
 | `FDA_CLIENT_SECRET` | | OAuth2 client secret |
+| `FDA_USER_EMAIL` | | Your FDA user email (server auto-resolves user_id and company_id) |
 | `FDA_ENVIRONMENT` | `test` | `test` or `prod` |
 | `FDA_EXTERNAL_BASE_URL` | `https://external-api-esgng.fda.gov` | Auth and metadata API |
 | `FDA_UPLOAD_BASE_URL` | `https://upload-api-esgng.fda.gov` | File upload API |
@@ -69,6 +68,7 @@ All configuration is via environment variables. Copy `.env.example` and fill in 
 | `DB_NAME` | `esg` | Database name |
 | `DB_SSLMODE` | `disable` | SSL mode |
 | `STATUS_POLL_INTERVAL` | `60s` | How often to poll FDA for in-flight submission updates (0 = disabled) |
+| `AUTH_DISABLED` | `false` | Set to `true` to skip API key auth (local dev) |
 
 ## Running
 
@@ -98,75 +98,70 @@ make build
 The CLI is a standalone binary that talks to the server's REST API.
 
 ```bash
-make build-cli
-export ESG_API_KEY=your-api-key
-export ESG_SERVER_URL=http://localhost:8080   # optional, this is the default
+export ESG_SERVER_URL=http://localhost:8080    # optional, this is the default
 ```
 
-### Commands
+### Send a submission (recommended)
 
-**Create a submission:**
+The `send` command runs the full FDA pipeline in one shot — create, initiate, upload, and finalize:
+
 ```bash
-./esg-cli create --name "My ANDA Submission" --type ANDA --center CDER --files 2
+./esg-cli send --file report.xml
 ```
 
-**List submissions:**
-```bash
-./esg-cli list --table           # human-friendly table
-./esg-cli list                   # JSON output
-./esg-cli list --limit 5 --offset 10
-```
+The server auto-resolves your FDA user ID and company ID from `FDA_USER_EMAIL` in `.env`. Submission name defaults to the filename (override with `--name`).
 
-**Initiate FDA workflow:**
-```bash
-./esg-cli submit --id <submission-id> --email user@company.com --company COMPANY1
-```
+Other optional flags: `--type ANDA` (default), `--center CDER` (default), `--protocol API` (default), `--desc "..."`.
 
-**Upload a file:**
-```bash
-./esg-cli upload --id <submission-id> --file ./submission-data.xml
-```
+After sending, track your submission:
 
-**Finalize (submit to FDA):**
-```bash
-./esg-cli finalize --id <submission-id>
-```
-
-**Check status (polls FDA):**
 ```bash
 ./esg-cli status --id <submission-id>
-```
-
-**View stored acknowledgements:**
-```bash
 ./esg-cli acks --id <submission-id>
 ```
 
-### Full workflow example
+### Authentication
+
+The Docker Compose setup runs with `AUTH_DISABLED=true` by default, so the CLI works with no API key — the server uses a default org/user for all requests.
+
+For production (multi-tenant), remove `AUTH_DISABLED` and provision API keys with the `seed-key` command:
+
+```bash
+./esg-cli seed-key --org "My Company" --slug myco --email you@company.com
+export ESG_API_KEY=<printed-key>
+```
+
+### Other commands
+
+```bash
+./esg-cli list --table           # human-friendly table
+./esg-cli list                   # JSON output
+./esg-cli status --id <id>       # poll FDA for current status
+./esg-cli acks --id <id>         # view stored acknowledgements
+```
+
+### Advanced: individual pipeline steps
+
+For multi-file submissions or debugging, you can run each step separately:
 
 ```bash
 # Create
-ID=$(./esg-cli create --name "Q1 Report" --type ANDA --files 1 | jq -r '.id')
+ID=$(./esg-cli create --name "Q1 Report" --type ANDA --files 2 | jq -r '.id')
 
 # Initiate FDA workflow
-./esg-cli submit --id $ID --email reg@pharma.com --company PHARMA1
+./esg-cli submit --id $ID
 
-# Upload file
-./esg-cli upload --id $ID --file ./report.xml
+# Upload files (repeat for each file)
+./esg-cli upload --id $ID --file ./file1.xml
+./esg-cli upload --id $ID --file ./file2.xml
 
 # Finalize
 ./esg-cli finalize --id $ID
-
-# Check status (repeat until ACCEPTED/REJECTED)
-./esg-cli status --id $ID
-
-# View acknowledgements
-./esg-cli acks --id $ID
 ```
 
 ## API Endpoints
 
-All endpoints except `/health` require an `Authorization: Bearer <api-key>` header.
+All endpoints except `/health` require an `Authorization: Bearer <api-key>` header (unless `AUTH_DISABLED=true`).
 
 | Method | Path | Description |
 |---|---|---|
@@ -211,11 +206,12 @@ Integration tests use `testcontainers-go` for disposable PostgreSQL containers a
 ## Build
 
 ```bash
-make build          # server binary → ./server
-make build-cli      # CLI binary → ./esg-cli
+make up             # builds CLI + starts server and Postgres
+make build          # server binary → ./server (requires local Go)
+make build-cli      # CLI binary → ./esg-cli (via Docker, no local Go needed)
 ```
 
-Both produce static binaries with no external dependencies.
+Both produce static binaries with no external dependencies. `make build-cli` cross-compiles for your host OS/architecture automatically.
 
 ## Key Design Decisions
 

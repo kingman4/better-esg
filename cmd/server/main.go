@@ -26,8 +26,10 @@ func main() {
 		FDAClientID:        cfg.FDAClientID,
 		FDAClientSecret:    cfg.FDAClientSecret,
 		FDAEnvironment:     cfg.FDAEnvironment,
+		FDAUserEmail:       cfg.FDAUserEmail,
 		EncryptionKey:      cfg.EncryptionKey,
 		StatusPollInterval: cfg.StatusPollInterval,
+		AuthDisabled:       cfg.AuthDisabled,
 	})
 	if err != nil {
 		log.Fatalf("failed to create server: %v", err)

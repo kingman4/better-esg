@@ -12,6 +12,13 @@ services:
       - DB_NAME=esg
       - DB_SSLMODE=disable
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1}
+      - FDA_EXTERNAL_BASE_URL=${FDA_EXTERNAL_BASE_URL:-https://external-api-esgng.fda.gov}
+      - FDA_UPLOAD_BASE_URL=${FDA_UPLOAD_BASE_URL:-https://upload-api-esgng.fda.gov}
+      - FDA_CLIENT_ID=${FDA_CLIENT_ID}
+      - FDA_CLIENT_SECRET=${FDA_CLIENT_SECRET}
+      - FDA_USER_EMAIL=${FDA_USER_EMAIL}
+      - FDA_ENVIRONMENT=${FDA_ENVIRONMENT:-test}
+      - AUTH_DISABLED=true
     depends_on:
       postgres:
         condition: service_healthy
