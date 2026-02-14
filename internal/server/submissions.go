@@ -110,6 +110,13 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	s.audit(r, "create_submission", "submission", sub.ID, map[string]any{
+		"submission_type": req.SubmissionType,
+		"submission_name": req.SubmissionName,
+		"fda_center":      req.FDACenter,
+		"file_count":      req.FileCount,
+	})
+
 	writeJSON(w, http.StatusCreated, toSubmissionResponse(sub))
 }
 

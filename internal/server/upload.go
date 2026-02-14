@@ -180,6 +180,13 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	s.audit(r, "upload_file", "file", fileRecord.ID, map[string]any{
+		"submission_id": id,
+		"file_name":     header.Filename,
+		"size_bytes":    written,
+		"sha256":        checksum,
+	})
+
 	writeJSON(w, http.StatusOK, uploadFileResponse{
 		FileID:         fileRecord.ID,
 		FileName:       header.Filename,
@@ -273,6 +280,11 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 	if err := s.transitionState(r.Context(), id, "SUBMIT_PENDING", "submitted", "SUBMITTED", &userID, ""); err != nil {
 		log.Printf("error updating final status for %s: %v", id, err)
 	}
+
+	s.audit(r, "finalize_submission", "submission", id, map[string]any{
+		"core_id":  sub.CoreID.String,
+		"checksum": checksum,
+	})
 
 	writeJSON(w, http.StatusOK, finalizeResponse{
 		SubmissionID:  id,

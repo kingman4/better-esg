@@ -104,6 +104,12 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 		}); err != nil {
 			log.Printf("poller: failed to store acknowledgement %s for submission %s: %v",
 				ack.AcknowledgementID, sub.ID, err)
+		} else {
+			s.auditSystem(ctx, sub.OrgID, "receive_acknowledgement", "acknowledgement", ack.AcknowledgementID, map[string]any{
+				"submission_id": sub.ID,
+				"ack_type":      ack.Type,
+				"status":        fdaStatus.Status,
+			})
 		}
 	}
 }

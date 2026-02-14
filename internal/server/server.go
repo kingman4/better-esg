@@ -24,6 +24,9 @@ type Server struct {
 	apiKeys     *repository.APIKeyRepo
 	acks        *repository.AckRepo
 	workflowLog *repository.WorkflowLogRepo
+	auditLog    *repository.AuditLogRepo
+	webhooks    *repository.WebhookRepo
+	deliveries  *repository.WebhookDeliveryRepo
 	fda          *fdaclient.Client
 	fdaUserEmail string // for auto-resolving user_id + company_id via GetCompanyInfo
 
@@ -77,6 +80,9 @@ func New(cfg Config) (*Server, error) {
 		apiKeys:     repository.NewAPIKeyRepo(db),
 		acks:        repository.NewAckRepo(db),
 		workflowLog: repository.NewWorkflowLogRepo(db),
+		auditLog:    repository.NewAuditLogRepo(db),
+		webhooks:    repository.NewWebhookRepo(db),
+		deliveries:  repository.NewWebhookDeliveryRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -125,6 +131,16 @@ func (s *Server) routes() {
 	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.withAuth(s.handleFinalizeSubmission))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/status", s.withAuth(s.handleGetStatus))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/acknowledgements", s.withAuth(s.handleListAcknowledgements))
+
+	// Webhooks
+	s.router.HandleFunc("POST /api/v1/webhooks", s.withAuth(s.handleCreateWebhook))
+	s.router.HandleFunc("GET /api/v1/webhooks", s.withAuth(s.handleListWebhooks))
+	s.router.HandleFunc("GET /api/v1/webhooks/{id}", s.withAuth(s.handleGetWebhook))
+	s.router.HandleFunc("DELETE /api/v1/webhooks/{id}", s.withAuth(s.handleDeleteWebhook))
+	s.router.HandleFunc("POST /api/v1/webhooks/{id}/test", s.withAuth(s.handleTestWebhook))
+
+	// Audit logs
+	s.router.HandleFunc("GET /api/v1/audit-logs", s.withAuth(s.handleListAuditLogs))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

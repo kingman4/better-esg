@@ -165,6 +165,11 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		log.Printf("error updating status for %s: %v", id, err)
 	}
 
+	s.audit(r, "submit_to_fda", "submission", id, map[string]any{
+		"core_id":    credResp.CoreID,
+		"payload_id": payloadResp.PayloadID,
+	})
+
 	writeJSON(w, http.StatusOK, submitToFDAResponse{
 		SubmissionID:  id,
 		CoreID:        credResp.CoreID,
