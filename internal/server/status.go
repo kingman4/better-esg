@@ -92,7 +92,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	// Update local DB if status changed
 	if sub.Status != localStatus || sub.WorkflowState != workflowState {
 		userID := userIDFromContext(r.Context())
-		if err := s.transitionState(r.Context(), orgID, id, sub.WorkflowState, localStatus, workflowState, &userID, ""); err != nil {
+		if err := s.transitionState(r.Context(), id, sub.WorkflowState, localStatus, workflowState, &userID, ""); err != nil {
 			log.Printf("error updating local status for %s: %v", id, err)
 		}
 	}

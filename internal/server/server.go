@@ -24,8 +24,6 @@ type Server struct {
 	apiKeys     *repository.APIKeyRepo
 	acks        *repository.AckRepo
 	workflowLog *repository.WorkflowLogRepo
-	webhooks    *repository.WebhookRepo
-	deliveries  *repository.WebhookDeliveryRepo
 	fda          *fdaclient.Client
 	fdaUserEmail string // for auto-resolving user_id + company_id via GetCompanyInfo
 
@@ -79,8 +77,6 @@ func New(cfg Config) (*Server, error) {
 		apiKeys:     repository.NewAPIKeyRepo(db),
 		acks:        repository.NewAckRepo(db),
 		workflowLog: repository.NewWorkflowLogRepo(db),
-		webhooks:    repository.NewWebhookRepo(db),
-		deliveries:  repository.NewWebhookDeliveryRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -129,13 +125,6 @@ func (s *Server) routes() {
 	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.withAuth(s.handleFinalizeSubmission))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/status", s.withAuth(s.handleGetStatus))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/acknowledgements", s.withAuth(s.handleListAcknowledgements))
-
-	// Webhook management
-	s.router.HandleFunc("POST /api/v1/webhooks", s.withAuth(s.handleCreateWebhook))
-	s.router.HandleFunc("GET /api/v1/webhooks", s.withAuth(s.handleListWebhooks))
-	s.router.HandleFunc("GET /api/v1/webhooks/{id}", s.withAuth(s.handleGetWebhook))
-	s.router.HandleFunc("DELETE /api/v1/webhooks/{id}", s.withAuth(s.handleDeleteWebhook))
-	s.router.HandleFunc("POST /api/v1/webhooks/{id}/test", s.withAuth(s.handleTestWebhook))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -180,8 +169,7 @@ func (s *Server) initDefaultOrgUser() error {
 // transitionState updates the submission's status/workflow_state and logs
 // the transition to workflow_state_log. triggeredBy is nil for system actions (e.g. poller).
 // Log failures are warned but don't fail the transition.
-// Dispatches webhook events for key status changes (submitted, completed, failed).
-func (s *Server) transitionState(ctx context.Context, orgID, subID, fromWorkflow, newStatus, newWorkflow string, triggeredBy *string, errDetails string) error {
+func (s *Server) transitionState(ctx context.Context, subID, fromWorkflow, newStatus, newWorkflow string, triggeredBy *string, errDetails string) error {
 	if err := s.submissions.UpdateStatus(ctx, subID, newStatus, newWorkflow); err != nil {
 		return err
 	}
@@ -189,29 +177,6 @@ func (s *Server) transitionState(ctx context.Context, orgID, subID, fromWorkflow
 		log.Printf("warning: failed to log workflow transition %s→%s for %s: %v",
 			fromWorkflow, newWorkflow, subID, err)
 	}
-
-	// Dispatch webhooks for key status changes
-	var eventType string
-	switch newStatus {
-	case "submitted":
-		eventType = "submission.submitted"
-	case "completed":
-		eventType = "submission.completed"
-	case "failed":
-		eventType = "submission.failed"
-	}
-	if eventType != "" {
-		data := map[string]any{
-			"submission_id": subID,
-			"status":        newStatus,
-			"workflow_state": newWorkflow,
-		}
-		if errDetails != "" {
-			data["error"] = errDetails
-		}
-		s.dispatchWebhooks(orgID, WebhookEvent{Type: eventType, Data: data})
-	}
-
 	return nil
 }
 

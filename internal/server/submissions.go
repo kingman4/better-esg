@@ -110,16 +110,6 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Dispatch webhook for new submission
-	s.dispatchWebhooks(orgID, WebhookEvent{
-		Type: "submission.created",
-		Data: map[string]any{
-			"submission_id": sub.ID,
-			"status":        sub.Status,
-			"workflow_state": sub.WorkflowState,
-		},
-	})
-
 	writeJSON(w, http.StatusCreated, toSubmissionResponse(sub))
 }
 
