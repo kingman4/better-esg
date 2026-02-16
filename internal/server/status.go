@@ -2,7 +2,6 @@ package server
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 )
 
@@ -38,7 +37,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {
-		log.Printf("error getting submission %s: %v", id, err)
+		s.logger.Error("failed to get submission", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get submission"})
 		return
 	}
@@ -57,7 +56,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	// Poll FDA for current status
 	fdaStatus, err := s.fda.GetSubmissionStatus(r.Context(), sub.CoreID.String)
 	if err != nil {
-		log.Printf("FDA status check failed for %s (core_id=%s): %v", id, sub.CoreID.String, err)
+		s.logger.Error("FDA status check failed", "submission_id", id, "core_id", sub.CoreID.String, "error", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA status check failed: " + sanitizeError(err),
 		})
@@ -69,8 +68,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	for _, ref := range fdaStatus.Acknowledgements {
 		ack, err := s.fda.GetAcknowledgement(r.Context(), ref.AcknowledgementID)
 		if err != nil {
-			log.Printf("error fetching acknowledgement %s for submission %s: %v",
-				ref.AcknowledgementID, id, err)
+			s.logger.Warn("failed to fetch acknowledgement", "ack_id", ref.AcknowledgementID, "submission_id", id, "error", err)
 			// Include partial info rather than failing the whole request
 			acks = append(acks, acknowledgementResponse{
 				AcknowledgementID: ref.AcknowledgementID,
@@ -93,7 +91,7 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 	if sub.Status != localStatus || sub.WorkflowState != workflowState {
 		userID := userIDFromContext(r.Context())
 		if err := s.transitionState(r.Context(), id, sub.WorkflowState, localStatus, workflowState, &userID, ""); err != nil {
-			log.Printf("error updating local status for %s: %v", id, err)
+			s.logger.Warn("failed to update local status", "submission_id", id, "error", err)
 		}
 	}
 
@@ -133,7 +131,7 @@ func (s *Server) handleListAcknowledgements(w http.ResponseWriter, r *http.Reque
 	// Verify submission exists and belongs to the org
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {
-		log.Printf("error getting submission %s: %v", id, err)
+		s.logger.Error("failed to get submission", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get submission"})
 		return
 	}
@@ -144,7 +142,7 @@ func (s *Server) handleListAcknowledgements(w http.ResponseWriter, r *http.Reque
 
 	acks, err := s.acks.ListBySubmission(r.Context(), id)
 	if err != nil {
-		log.Printf("error listing acknowledgements for %s: %v", id, err)
+		s.logger.Error("failed to list acknowledgements", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list acknowledgements"})
 		return
 	}

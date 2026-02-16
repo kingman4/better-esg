@@ -1,7 +1,6 @@
 package server
 
 import (
-	"log"
 	"net/http"
 	"strings"
 )
@@ -31,7 +30,7 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 
 		apiKey, err := s.apiKeys.LookupByRawKey(r.Context(), rawKey)
 		if err != nil {
-			log.Printf("error looking up API key: %v", err)
+			s.logger.Error("failed to look up API key", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "authentication error"})
 			return
 		}
@@ -43,7 +42,7 @@ func (s *Server) withAuth(next http.HandlerFunc) http.HandlerFunc {
 		// Fire-and-forget last_used_at update
 		go func() {
 			if err := s.apiKeys.TouchLastUsed(r.Context(), apiKey.ID); err != nil {
-				log.Printf("error updating api key last_used_at: %v", err)
+				s.logger.Warn("failed to update API key last_used_at", "error", err)
 			}
 		}()
 

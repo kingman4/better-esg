@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
@@ -53,7 +52,7 @@ func (s *Server) dispatchWebhooks(orgID string, event WebhookEvent) {
 
 		webhooks, err := s.webhooks.ListActiveForEvent(ctx, orgID, event.Type)
 		if err != nil {
-			log.Printf("webhook: failed to list webhooks for org %s event %s: %v", orgID, event.Type, err)
+			s.logger.Error("webhook: failed to list active webhooks", "org_id", orgID, "event", event.Type, "error", err)
 			return
 		}
 		if len(webhooks) == 0 {
@@ -69,7 +68,7 @@ func (s *Server) dispatchWebhooks(orgID string, event WebhookEvent) {
 
 		body, err := json.Marshal(payload)
 		if err != nil {
-			log.Printf("webhook: failed to marshal payload: %v", err)
+			s.logger.Error("webhook: failed to marshal payload", "error", err)
 			return
 		}
 
@@ -127,7 +126,7 @@ func (s *Server) deliverWebhook(ctx context.Context, wh repository.Webhook, body
 				Attempt:      attempt,
 				Delivered:    delivered,
 			}); logErr != nil {
-				log.Printf("webhook: failed to log delivery for webhook %s: %v", wh.ID, logErr)
+				s.logger.Warn("webhook: failed to log delivery", "webhook_id", wh.ID, "error", logErr)
 			}
 		}
 
@@ -137,14 +136,14 @@ func (s *Server) deliverWebhook(ctx context.Context, wh repository.Webhook, body
 
 		// Don't retry on 4xx (client error) — it won't help
 		if statusCode >= 400 && statusCode < 500 {
-			log.Printf("webhook: permanent failure for %s → %s: HTTP %d", wh.ID, wh.URL, statusCode)
+			s.logger.Error("webhook: permanent delivery failure", "webhook_id", wh.ID, "url", wh.URL, "status_code", statusCode)
 			return
 		}
 
-		log.Printf("webhook: attempt %d/%d failed for %s → %s: %s", attempt, maxAttempts, wh.ID, wh.URL, errMsg)
+		s.logger.Warn("webhook: delivery attempt failed", "attempt", attempt, "max_attempts", maxAttempts, "webhook_id", wh.ID, "url", wh.URL, "error", errMsg)
 	}
 
-	log.Printf("webhook: exhausted retries for %s → %s", wh.ID, wh.URL)
+	s.logger.Error("webhook: exhausted retries", "webhook_id", wh.ID, "url", wh.URL)
 }
 
 // sendWebhookRequest sends a signed POST to the webhook URL.
@@ -191,7 +190,7 @@ func (s *Server) dispatchTestWebhook(wh repository.Webhook) {
 
 		body, err := json.Marshal(payload)
 		if err != nil {
-			log.Printf("webhook: failed to marshal test payload: %v", err)
+			s.logger.Error("webhook: failed to marshal test payload", "error", err)
 			return
 		}
 

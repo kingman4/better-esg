@@ -25,6 +25,9 @@ type Config struct {
 	// Status poller — how often to poll FDA for in-flight submission updates
 	StatusPollInterval time.Duration
 
+	// Logging
+	LogLevel string // "debug", "info", "warn", "error" (default: "info")
+
 	// When true, API key auth is skipped (local dev convenience)
 	AuthDisabled bool
 }
@@ -73,6 +76,7 @@ func Load() (*Config, error) {
 		pollInterval = parsed
 	}
 
+	logLevel := envOrDefault("LOG_LEVEL", "info")
 	authDisabled := os.Getenv("AUTH_DISABLED") == "true"
 
 	return &Config{
@@ -86,6 +90,7 @@ func Load() (*Config, error) {
 		FDAUserEmail:       os.Getenv("FDA_USER_EMAIL"),
 		EncryptionKey:      encKey,
 		StatusPollInterval: pollInterval,
+		LogLevel:           logLevel,
 		AuthDisabled:       authDisabled,
 	}, nil
 }

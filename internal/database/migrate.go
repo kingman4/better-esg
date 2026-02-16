@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -41,6 +41,6 @@ func RunMigrations(db *sql.DB) error {
 		return fmt.Errorf("getting migration version: %w", err)
 	}
 
-	log.Printf("database migrated to version %d (dirty: %v)", version, dirty)
+	slog.Info("database migrated", "version", version, "dirty", dirty)
 	return nil
 }

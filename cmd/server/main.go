@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kingman4/better-esg/internal/config"
+	"github.com/kingman4/better-esg/internal/logging"
 	"github.com/kingman4/better-esg/internal/server"
 )
 
@@ -18,6 +19,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+
+	logger := logging.New(cfg.LogLevel)
 
 	srv, err := server.New(server.Config{
 		DatabaseURL:        cfg.DatabaseURL,
@@ -29,10 +32,12 @@ func main() {
 		FDAUserEmail:       cfg.FDAUserEmail,
 		EncryptionKey:      cfg.EncryptionKey,
 		StatusPollInterval: cfg.StatusPollInterval,
+		Logger:             logger,
 		AuthDisabled:       cfg.AuthDisabled,
 	})
 	if err != nil {
-		log.Fatalf("failed to create server: %v", err)
+		logger.Error("failed to create server", "error", err)
+		os.Exit(1)
 	}
 	defer srv.Close()
 
@@ -49,21 +54,23 @@ func main() {
 	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("server listening on :%s", cfg.Port)
+		logger.Info("server listening", "port", cfg.Port)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			logger.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	<-done
-	log.Println("shutting down...")
+	logger.Info("shutting down")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Fatalf("forced shutdown: %v", err)
+		logger.Error("forced shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("server stopped")
+	logger.Info("server stopped")
 }

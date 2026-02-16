@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net"
 	"net/http"
 	"strconv"
@@ -42,7 +41,7 @@ func (s *Server) audit(r *http.Request, action, entityType, entityID string, det
 		UserAgent:  r.Header.Get("User-Agent"),
 		Details:    details,
 	}); err != nil {
-		log.Printf("warning: audit log insert failed: %v", err)
+		s.logger.Warn("audit log insert failed", "error", err)
 	}
 }
 
@@ -60,7 +59,7 @@ func (s *Server) auditSystem(ctx context.Context, orgID, action, entityType, ent
 		EntityID:   entityID,
 		Details:    details,
 	}); err != nil {
-		log.Printf("warning: audit log insert failed: %v", err)
+		s.logger.Warn("audit log insert failed", "error", err)
 	}
 }
 
@@ -127,7 +126,7 @@ func (s *Server) handleListAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := s.auditLog.ListByOrg(r.Context(), orgID, limit, offset)
 	if err != nil {
-		log.Printf("error listing audit logs: %v", err)
+		s.logger.Error("failed to list audit logs", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list audit logs"})
 		return
 	}

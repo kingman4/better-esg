@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -96,7 +95,7 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 	if secret == "" {
 		b := make([]byte, 32)
 		if _, err := rand.Read(b); err != nil {
-			log.Printf("error generating webhook secret: %v", err)
+			s.logger.Error("failed to generate webhook secret", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate secret"})
 			return
 		}
@@ -112,7 +111,7 @@ func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
 		CreatedBy:   userID,
 	})
 	if err != nil {
-		log.Printf("error creating webhook: %v", err)
+		s.logger.Error("failed to create webhook", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create webhook"})
 		return
 	}
@@ -140,7 +139,7 @@ func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
 
 	webhooks, err := s.webhooks.ListByOrg(r.Context(), orgID, limit, offset)
 	if err != nil {
-		log.Printf("error listing webhooks: %v", err)
+		s.logger.Error("failed to list webhooks", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list webhooks"})
 		return
 	}
@@ -163,7 +162,7 @@ func (s *Server) handleGetWebhook(w http.ResponseWriter, r *http.Request) {
 	orgID := orgIDFromContext(r.Context())
 	wh, err := s.webhooks.GetByID(r.Context(), orgID, id)
 	if err != nil {
-		log.Printf("error getting webhook: %v", err)
+		s.logger.Error("failed to get webhook", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get webhook"})
 		return
 	}
@@ -201,7 +200,7 @@ func (s *Server) handleTestWebhook(w http.ResponseWriter, r *http.Request) {
 	orgID := orgIDFromContext(r.Context())
 	wh, err := s.webhooks.GetByID(r.Context(), orgID, id)
 	if err != nil {
-		log.Printf("error getting webhook for test: %v", err)
+		s.logger.Error("failed to get webhook for test", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get webhook"})
 		return
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -14,6 +15,11 @@ import (
 
 	"github.com/kingman4/better-esg/internal/repository"
 )
+
+// testLogger returns a discard logger for use in tests.
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func TestSignPayload(t *testing.T) {
 	body := []byte(`{"id":"evt_abc","type":"submission.completed","data":{}}`)
@@ -98,7 +104,7 @@ func TestDeliverWebhook_Success(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	s := &Server{} // no deliveries repo — logging is skipped
+	s := &Server{logger: testLogger()} // no deliveries repo — logging is skipped
 	wh := repository.Webhook{
 		ID:     "wh-1",
 		URL:    ts.URL,
@@ -135,7 +141,7 @@ func TestDeliverWebhook_RetriesOnServerError(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	s := &Server{}
+	s := &Server{logger: testLogger()}
 	wh := repository.Webhook{
 		ID:     "wh-retry",
 		URL:    ts.URL,
@@ -165,7 +171,7 @@ func TestDeliverWebhook_StopsOn4xx(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	s := &Server{}
+	s := &Server{logger: testLogger()}
 	wh := repository.Webhook{
 		ID:     "wh-4xx",
 		URL:    ts.URL,
@@ -198,7 +204,7 @@ func TestDeliverWebhook_ExhaustsRetries(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	s := &Server{}
+	s := &Server{logger: testLogger()}
 	wh := repository.Webhook{
 		ID:     "wh-exhaust",
 		URL:    ts.URL,

@@ -3,7 +3,6 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -65,7 +64,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	// 1. Look up submission and verify it's in draft status
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {
-		log.Printf("error getting submission %s: %v", id, err)
+		s.logger.Error("failed to get submission", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get submission"})
 		return
 	}
@@ -83,7 +82,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	// Update status to initiated
 	userID := userIDFromContext(r.Context())
 	if err := s.transitionState(r.Context(), id, sub.WorkflowState, "initiated", "CREDENTIALS_PENDING", &userID, ""); err != nil {
-		log.Printf("error updating status for %s: %v", id, err)
+		s.logger.Error("failed to update submission status", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update submission status"})
 		return
 	}
@@ -96,7 +95,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		// Auto-resolve via GetCompanyInfo
 		companyInfo, err := s.fda.GetCompanyInfo(r.Context(), userEmail)
 		if err != nil {
-			log.Printf("FDA GetCompanyInfo failed for %s: %v", userEmail, err)
+			s.logger.Error("FDA GetCompanyInfo failed", "email", userEmail, "error", err)
 			s.transitionState(r.Context(), id, "CREDENTIALS_PENDING", "failed", "CREDENTIALS_FAILED", &userID, err.Error())
 			writeJSON(w, http.StatusBadGateway, map[string]string{
 				"error": "failed to resolve FDA company info: " + sanitizeError(err),
@@ -105,8 +104,9 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		}
 		fdaUserID = fmt.Sprintf("%d", companyInfo.UserID)
 		fdaCompanyID = fmt.Sprintf("%d", companyInfo.CompanyID)
-		log.Printf("resolved FDA IDs for %s: user_id=%s company_id=%s (%s)",
-			userEmail, fdaUserID, fdaCompanyID, companyInfo.CompanyName)
+		s.logger.Info("resolved FDA IDs",
+			"email", userEmail, "fda_user_id", fdaUserID,
+			"fda_company_id", fdaCompanyID, "company_name", companyInfo.CompanyName)
 	}
 
 	// 2b. Submit credentials to FDA
@@ -121,7 +121,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		Description:        sub.Description.String,
 	})
 	if err != nil {
-		log.Printf("FDA credential submission failed for %s: %v", id, err)
+		s.logger.Error("FDA credential submission failed", "submission_id", id, "error", err)
 		s.transitionState(r.Context(), id, "CREDENTIALS_PENDING", "failed", "CREDENTIALS_FAILED", &userID, err.Error())
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA credential submission failed: " + sanitizeError(err),
@@ -131,19 +131,19 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 
 	// Persist temp credentials for use during finalize step
 	if err := s.submissions.SaveTempCredentials(r.Context(), id, credResp.TempUser, credResp.TempPassword); err != nil {
-		log.Printf("error saving temp credentials for %s: %v", id, err)
+		s.logger.Error("failed to save temp credentials", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save credentials"})
 		return
 	}
 
 	if err := s.transitionState(r.Context(), id, "CREDENTIALS_PENDING", "credentials_generated", "PAYLOAD_PENDING", &userID, ""); err != nil {
-		log.Printf("error updating status for %s: %v", id, err)
+		s.logger.Error("failed to update submission status", "submission_id", id, "error", err)
 	}
 
 	// 3. Get payload ID from FDA upload API
 	payloadResp, err := s.fda.GetPayload(r.Context())
 	if err != nil {
-		log.Printf("FDA payload request failed for %s: %v", id, err)
+		s.logger.Error("FDA payload request failed", "submission_id", id, "error", err)
 		s.transitionState(r.Context(), id, "PAYLOAD_PENDING", "failed", "PAYLOAD_FAILED", &userID, err.Error())
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA payload request failed: " + sanitizeError(err),
@@ -156,13 +156,13 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 		credResp.CoreID, payloadResp.PayloadID,
 		payloadResp.Links.UploadLink, payloadResp.Links.SubmitLink,
 	); err != nil {
-		log.Printf("error updating FDA fields for %s: %v", id, err)
+		s.logger.Error("failed to save FDA fields", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save FDA data"})
 		return
 	}
 
 	if err := s.transitionState(r.Context(), id, "PAYLOAD_PENDING", "payload_obtained", "UPLOAD_PENDING", &userID, ""); err != nil {
-		log.Printf("error updating status for %s: %v", id, err)
+		s.logger.Error("failed to update submission status", "submission_id", id, "error", err)
 	}
 
 	s.audit(r, "submit_to_fda", "submission", id, map[string]any{

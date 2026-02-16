@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -27,6 +27,7 @@ type Server struct {
 	auditLog    *repository.AuditLogRepo
 	webhooks    *repository.WebhookRepo
 	deliveries  *repository.WebhookDeliveryRepo
+	logger      *slog.Logger
 	fda          *fdaclient.Client
 	fdaUserEmail string // for auto-resolving user_id + company_id via GetCompanyInfo
 
@@ -49,6 +50,7 @@ type Config struct {
 	FDAUserEmail       string        // email for auto-resolving user_id + company_id
 	EncryptionKey      []byte        // 32 bytes for AES-256-GCM
 	StatusPollInterval time.Duration // how often to poll FDA for in-flight submissions (0 = disabled)
+	Logger             *slog.Logger  // structured logger (nil = slog.Default())
 	AuthDisabled       bool          // when true, skip API key auth and use a default org/user
 }
 
@@ -72,6 +74,11 @@ func New(cfg Config) (*Server, error) {
 		fdaEnv = fdaclient.EnvProd
 	}
 
+	logger := cfg.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	s := &Server{
 		db:          db,
 		router:      http.NewServeMux(),
@@ -91,12 +98,13 @@ func New(cfg Config) (*Server, error) {
 			Environment:     fdaEnv,
 		}),
 		fdaUserEmail: cfg.FDAUserEmail,
+		logger:       logger,
 	}
 	if cfg.AuthDisabled {
 		if err := s.initDefaultOrgUser(); err != nil {
 			return nil, fmt.Errorf("initializing default org/user: %w", err)
 		}
-		log.Println("auth disabled — all requests use default org/user")
+		s.logger.Info("auth disabled, using default org/user")
 	}
 	s.routes()
 
@@ -190,8 +198,8 @@ func (s *Server) transitionState(ctx context.Context, subID, fromWorkflow, newSt
 		return err
 	}
 	if err := s.workflowLog.Insert(ctx, subID, fromWorkflow, newWorkflow, triggeredBy, errDetails); err != nil {
-		log.Printf("warning: failed to log workflow transition %s→%s for %s: %v",
-			fromWorkflow, newWorkflow, subID, err)
+		s.logger.Warn("failed to log workflow transition",
+			"from", fromWorkflow, "to", newWorkflow, "submission_id", subID, "error", err)
 	}
 	return nil
 }
@@ -200,6 +208,6 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("error encoding response: %v", err)
+		slog.Error("failed to encode JSON response", "error", err)
 	}
 }

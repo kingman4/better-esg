@@ -163,6 +163,7 @@ func newTestServerWithFDA(t *testing.T, fda *fdaclient.Client) *Server {
 		apiKeys:     repository.NewAPIKeyRepo(testDB),
 		acks:        repository.NewAckRepo(testDB),
 		workflowLog: repository.NewWorkflowLogRepo(testDB),
+		logger:      testLogger(),
 		fda:         fda,
 	}
 	s.routes()

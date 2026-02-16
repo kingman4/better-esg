@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -48,7 +47,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	// Look up the submission
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {
-		log.Printf("error getting submission %s: %v", id, err)
+		s.logger.Error("failed to get submission", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get submission"})
 		return
 	}
@@ -73,7 +72,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	// Check file count limit
 	totalFiles, _, err := s.files.CountBySubmission(r.Context(), id)
 	if err != nil {
-		log.Printf("error counting files for %s: %v", id, err)
+		s.logger.Error("failed to count files", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to check file count"})
 		return
 	}
@@ -100,7 +99,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	// Save to temp directory and compute SHA-256 simultaneously
 	tempDir := filepath.Join(os.TempDir(), "esg-uploads", id)
 	if err := os.MkdirAll(tempDir, 0o755); err != nil {
-		log.Printf("error creating temp dir for %s: %v", id, err)
+		s.logger.Error("failed to create temp directory", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create temp storage"})
 		return
 	}
@@ -108,7 +107,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	tempPath := filepath.Join(tempDir, header.Filename)
 	tempFile, err := os.Create(tempPath)
 	if err != nil {
-		log.Printf("error creating temp file %s: %v", tempPath, err)
+		s.logger.Error("failed to create temp file", "path", tempPath, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save file"})
 		return
 	}
@@ -118,7 +117,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	tempFile.Close()
 	if err != nil {
 		os.Remove(tempPath)
-		log.Printf("error writing temp file %s: %v", tempPath, err)
+		s.logger.Error("failed to write temp file", "path", tempPath, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save file"})
 		return
 	}
@@ -143,7 +142,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		os.Remove(tempPath)
-		log.Printf("error recording file for %s: %v", id, err)
+		s.logger.Error("failed to record file", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record file"})
 		return
 	}
@@ -151,7 +150,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	// Stream to FDA
 	fdaFile, err := os.Open(tempPath)
 	if err != nil {
-		log.Printf("error reopening temp file %s: %v", tempPath, err)
+		s.logger.Error("failed to reopen temp file", "path", tempPath, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read file for FDA upload"})
 		return
 	}
@@ -159,7 +158,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	_, fdaErr := s.fda.UploadFile(r.Context(), sub.PayloadID.String, header.Filename, fdaFile, written)
 	if fdaErr != nil {
-		log.Printf("FDA upload failed for file %s on submission %s: %v", header.Filename, id, fdaErr)
+		s.logger.Error("FDA file upload failed", "file_name", header.Filename, "submission_id", id, "error", fdaErr)
 		s.files.UpdateStatus(r.Context(), fileRecord.ID, "failed")
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA file upload failed: " + sanitizeError(fdaErr),
@@ -169,14 +168,14 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 
 	// Mark file as uploaded
 	if err := s.files.UpdateStatus(r.Context(), fileRecord.ID, "uploaded"); err != nil {
-		log.Printf("error updating file status for %s: %v", fileRecord.ID, err)
+		s.logger.Warn("failed to update file status", "file_id", fileRecord.ID, "error", err)
 	}
 
 	// Update submission status if this is the first file upload
 	if sub.Status == "payload_obtained" {
 		userID := userIDFromContext(r.Context())
 		if err := s.transitionState(r.Context(), id, sub.WorkflowState, "file_uploaded", "FILES_UPLOADING", &userID, ""); err != nil {
-			log.Printf("error updating submission status for %s: %v", id, err)
+			s.logger.Warn("failed to update submission status", "submission_id", id, "error", err)
 		}
 	}
 
@@ -209,7 +208,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 
 	sub, err := s.submissions.GetByID(r.Context(), orgID, id)
 	if err != nil {
-		log.Printf("error getting submission %s: %v", id, err)
+		s.logger.Error("failed to get submission", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get submission"})
 		return
 	}
@@ -228,7 +227,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 	// Verify all expected files are uploaded
 	totalFiles, uploadedFiles, err := s.files.CountBySubmission(r.Context(), id)
 	if err != nil {
-		log.Printf("error counting files for %s: %v", id, err)
+		s.logger.Error("failed to count files", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to verify files"})
 		return
 	}
@@ -242,7 +241,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 	// Load temp credentials
 	creds, err := s.submissions.GetTempCredentials(r.Context(), id)
 	if err != nil {
-		log.Printf("error loading temp credentials for %s: %v", id, err)
+		s.logger.Error("failed to load temp credentials", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load credentials"})
 		return
 	}
@@ -250,7 +249,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 	// Compute combined checksum from all file checksums
 	files, err := s.files.ListBySubmission(r.Context(), id)
 	if err != nil {
-		log.Printf("error listing files for %s: %v", id, err)
+		s.logger.Error("failed to list files", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list files"})
 		return
 	}
@@ -259,7 +258,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 
 	userID := userIDFromContext(r.Context())
 	if err := s.transitionState(r.Context(), id, sub.WorkflowState, "file_uploaded", "SUBMIT_PENDING", &userID, ""); err != nil {
-		log.Printf("error updating status for %s: %v", id, err)
+		s.logger.Warn("failed to update submission status", "submission_id", id, "error", err)
 	}
 
 	// Submit payload to FDA
@@ -269,7 +268,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 		SHA256Checksum: checksum,
 	})
 	if fdaErr != nil {
-		log.Printf("FDA submit failed for %s: %v", id, fdaErr)
+		s.logger.Error("FDA submission failed", "submission_id", id, "error", fdaErr)
 		s.transitionState(r.Context(), id, "SUBMIT_PENDING", "failed", "SUBMIT_FAILED", &userID, fdaErr.Error())
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"error": "FDA submission failed: " + sanitizeError(fdaErr),
@@ -278,7 +277,7 @@ func (s *Server) handleFinalizeSubmission(w http.ResponseWriter, r *http.Request
 	}
 
 	if err := s.transitionState(r.Context(), id, "SUBMIT_PENDING", "submitted", "SUBMITTED", &userID, ""); err != nil {
-		log.Printf("error updating final status for %s: %v", id, err)
+		s.logger.Warn("failed to update final status", "submission_id", id, "error", err)
 	}
 
 	s.audit(r, "finalize_submission", "submission", id, map[string]any{

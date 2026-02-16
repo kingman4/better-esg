@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/kingman4/better-esg/internal/repository"
@@ -14,7 +13,7 @@ var pollableStates = []string{"SUBMITTED", "PROCESSING"}
 // startStatusPoller launches a background goroutine that periodically polls FDA
 // for all in-flight submissions and updates the local DB.
 func (s *Server) startStatusPoller(ctx context.Context, interval time.Duration) {
-	log.Printf("starting status poller (interval: %v)", interval)
+	s.logger.Info("starting status poller", "interval", interval)
 
 	go func() {
 		ticker := time.NewTicker(interval)
@@ -23,7 +22,7 @@ func (s *Server) startStatusPoller(ctx context.Context, interval time.Duration) 
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("stopping status poller")
+				s.logger.Info("stopping status poller")
 				return
 			case <-ticker.C:
 				s.pollAllSubmissions(ctx)
@@ -43,14 +42,14 @@ func (s *Server) stopStatusPoller() {
 func (s *Server) pollAllSubmissions(ctx context.Context) {
 	subs, err := s.submissions.ListByWorkflowStates(ctx, pollableStates)
 	if err != nil {
-		log.Printf("poller: failed to list in-flight submissions: %v", err)
+		s.logger.Error("poller: failed to list in-flight submissions", "error", err)
 		return
 	}
 	if len(subs) == 0 {
 		return
 	}
 
-	log.Printf("poller: polling %d in-flight submission(s)", len(subs))
+	s.logger.Info("poller: polling in-flight submissions", "count", len(subs))
 
 	for i := range subs {
 		if ctx.Err() != nil {
@@ -67,7 +66,7 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 
 	fdaStatus, err := s.fda.GetSubmissionStatus(ctx, coreID)
 	if err != nil {
-		log.Printf("poller: FDA status check failed for submission %s (core_id=%s): %v", sub.ID, coreID, err)
+		s.logger.Error("poller: FDA status check failed", "submission_id", sub.ID, "core_id", coreID, "error", err)
 		return
 	}
 
@@ -77,10 +76,9 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 	// Update local DB if status changed
 	if sub.Status != localStatus || sub.WorkflowState != workflowState {
 		if err := s.transitionState(ctx, sub.ID, sub.WorkflowState, localStatus, workflowState, nil, ""); err != nil {
-			log.Printf("poller: failed to update status for submission %s: %v", sub.ID, err)
+			s.logger.Error("poller: failed to update status", "submission_id", sub.ID, "error", err)
 		} else {
-			log.Printf("poller: submission %s (core_id=%s): %s/%s → %s/%s",
-				sub.ID, coreID, sub.Status, sub.WorkflowState, localStatus, workflowState)
+			s.logger.Info("poller: submission status changed", "submission_id", sub.ID, "core_id", coreID, "old_status", sub.Status, "new_status", localStatus, "old_workflow", sub.WorkflowState, "new_workflow", workflowState)
 		}
 	}
 
@@ -88,8 +86,7 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 	for _, ref := range fdaStatus.Acknowledgements {
 		ack, err := s.fda.GetAcknowledgement(ctx, ref.AcknowledgementID)
 		if err != nil {
-			log.Printf("poller: failed to fetch acknowledgement %s for submission %s: %v",
-				ref.AcknowledgementID, sub.ID, err)
+			s.logger.Error("poller: failed to fetch acknowledgement", "ack_id", ref.AcknowledgementID, "submission_id", sub.ID, "error", err)
 			continue
 		}
 
@@ -102,8 +99,7 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 			ParsedData:   ack.ParsedData,
 			ESGNGCode:    ack.ESGNGCode,
 		}); err != nil {
-			log.Printf("poller: failed to store acknowledgement %s for submission %s: %v",
-				ack.AcknowledgementID, sub.ID, err)
+			s.logger.Error("poller: failed to store acknowledgement", "ack_id", ack.AcknowledgementID, "submission_id", sub.ID, "error", err)
 		} else {
 			s.auditSystem(ctx, sub.OrgID, "receive_acknowledgement", "acknowledgement", ack.AcknowledgementID, map[string]any{
 				"submission_id": sub.ID,
