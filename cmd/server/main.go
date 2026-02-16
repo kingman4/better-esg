@@ -33,6 +33,7 @@ func main() {
 		EncryptionKey:      cfg.EncryptionKey,
 		StatusPollInterval: cfg.StatusPollInterval,
 		Logger:             logger,
+		StoragePath:        cfg.StoragePath,
 		AuthDisabled:       cfg.AuthDisabled,
 	})
 	if err != nil {

@@ -68,6 +68,8 @@ All configuration is via environment variables. Copy `.env.example` and fill in 
 | `DB_NAME` | `esg` | Database name |
 | `DB_SSLMODE` | `disable` | SSL mode |
 | `STATUS_POLL_INTERVAL` | `60s` | How often to poll FDA for in-flight submission updates (0 = disabled) |
+| `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `STORAGE_PATH` | `./data/uploads` | Base directory for persisting uploaded submission files |
 | `AUTH_DISABLED` | `false` | Set to `true` to skip API key auth (local dev) |
 
 ## Running

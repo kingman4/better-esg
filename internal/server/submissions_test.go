@@ -24,6 +24,7 @@ import (
 	"github.com/kingman4/better-esg/internal/database"
 	"github.com/kingman4/better-esg/internal/fdaclient"
 	"github.com/kingman4/better-esg/internal/repository"
+	"github.com/kingman4/better-esg/internal/storage"
 	_ "github.com/lib/pq"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -155,6 +156,10 @@ func newTestServer(t *testing.T) *Server {
 // with the given FDA client. Pass nil if FDA is not needed.
 func newTestServerWithFDA(t *testing.T, fda *fdaclient.Client) *Server {
 	t.Helper()
+	store, err := storage.NewLocalStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("creating test storage: %v", err)
+	}
 	s := &Server{
 		db:          testDB,
 		router:      http.NewServeMux(),
@@ -163,6 +168,7 @@ func newTestServerWithFDA(t *testing.T, fda *fdaclient.Client) *Server {
 		apiKeys:     repository.NewAPIKeyRepo(testDB),
 		acks:        repository.NewAckRepo(testDB),
 		workflowLog: repository.NewWorkflowLogRepo(testDB),
+		storage:     store,
 		logger:      testLogger(),
 		fda:         fda,
 	}

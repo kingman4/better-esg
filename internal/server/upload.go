@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -33,7 +31,7 @@ type finalizeResponse struct {
 }
 
 // handleUploadFile handles POST /api/v1/submissions/{id}/files.
-// Accepts a multipart file upload, computes SHA-256, saves to temp storage,
+// Accepts a multipart file upload, computes SHA-256, persists to storage,
 // records in submission_files, and streams the file to FDA.
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -96,28 +94,12 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Save to temp directory and compute SHA-256 simultaneously
-	tempDir := filepath.Join(os.TempDir(), "esg-uploads", id)
-	if err := os.MkdirAll(tempDir, 0o755); err != nil {
-		s.logger.Error("failed to create temp directory", "submission_id", id, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create temp storage"})
-		return
-	}
-
-	tempPath := filepath.Join(tempDir, header.Filename)
-	tempFile, err := os.Create(tempPath)
-	if err != nil {
-		s.logger.Error("failed to create temp file", "path", tempPath, "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save file"})
-		return
-	}
-
+	// Save to storage and compute SHA-256 simultaneously
+	storageKey := id + "/" + header.Filename
 	hasher := sha256.New()
-	written, err := io.Copy(tempFile, io.TeeReader(file, hasher))
-	tempFile.Close()
+	written, err := s.storage.Save(r.Context(), storageKey, io.TeeReader(file, hasher))
 	if err != nil {
-		os.Remove(tempPath)
-		s.logger.Error("failed to write temp file", "path", tempPath, "error", err)
+		s.logger.Error("failed to save file", "key", storageKey, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save file"})
 		return
 	}
@@ -137,20 +119,20 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 		FileSizeBytes:  written,
 		SHA256Checksum: checksum,
 		MimeType:       mimeType,
-		StoragePath:    tempPath,
+		StoragePath:    storageKey,
 		StorageBackend: "local_fs",
 	})
 	if err != nil {
-		os.Remove(tempPath)
+		s.storage.Delete(r.Context(), storageKey)
 		s.logger.Error("failed to record file", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record file"})
 		return
 	}
 
-	// Stream to FDA
-	fdaFile, err := os.Open(tempPath)
+	// Stream to FDA from storage
+	fdaFile, err := s.storage.Open(r.Context(), storageKey)
 	if err != nil {
-		s.logger.Error("failed to reopen temp file", "path", tempPath, "error", err)
+		s.logger.Error("failed to open stored file", "key", storageKey, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read file for FDA upload"})
 		return
 	}

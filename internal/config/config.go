@@ -28,6 +28,9 @@ type Config struct {
 	// Logging
 	LogLevel string // "debug", "info", "warn", "error" (default: "info")
 
+	// File storage
+	StoragePath string // base directory for uploaded files (default: "./data/uploads")
+
 	// When true, API key auth is skipped (local dev convenience)
 	AuthDisabled bool
 }
@@ -91,6 +94,7 @@ func Load() (*Config, error) {
 		EncryptionKey:      encKey,
 		StatusPollInterval: pollInterval,
 		LogLevel:           logLevel,
+		StoragePath:        envOrDefault("STORAGE_PATH", "./data/uploads"),
 		AuthDisabled:       authDisabled,
 	}, nil
 }

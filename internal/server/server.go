@@ -12,6 +12,7 @@ import (
 	"github.com/kingman4/better-esg/internal/database"
 	"github.com/kingman4/better-esg/internal/fdaclient"
 	"github.com/kingman4/better-esg/internal/repository"
+	"github.com/kingman4/better-esg/internal/storage"
 	_ "github.com/lib/pq"
 )
 
@@ -28,6 +29,7 @@ type Server struct {
 	auditLog    *repository.AuditLogRepo
 	webhooks    *repository.WebhookRepo
 	deliveries  *repository.WebhookDeliveryRepo
+	storage     storage.Store
 	logger      *slog.Logger
 	fda          *fdaclient.Client
 	fdaUserEmail string // for auto-resolving user_id + company_id via GetCompanyInfo
@@ -52,6 +54,7 @@ type Config struct {
 	EncryptionKey      []byte        // 32 bytes for AES-256-GCM
 	StatusPollInterval time.Duration // how often to poll FDA for in-flight submissions (0 = disabled)
 	Logger             *slog.Logger  // structured logger (nil = slog.Default())
+	StoragePath        string        // base directory for file storage (default: "./data/uploads")
 	AuthDisabled       bool          // when true, skip API key auth and use a default org/user
 }
 
@@ -80,6 +83,15 @@ func New(cfg Config) (*Server, error) {
 		logger = slog.Default()
 	}
 
+	storagePath := cfg.StoragePath
+	if storagePath == "" {
+		storagePath = "./data/uploads"
+	}
+	store, err := storage.NewLocalStore(storagePath)
+	if err != nil {
+		return nil, fmt.Errorf("initializing file storage: %w", err)
+	}
+
 	s := &Server{
 		db:          db,
 		router:      http.NewServeMux(),
@@ -100,6 +112,7 @@ func New(cfg Config) (*Server, error) {
 			Environment:     fdaEnv,
 		}),
 		fdaUserEmail: cfg.FDAUserEmail,
+		storage:      store,
 		logger:       logger,
 	}
 	if cfg.AuthDisabled {
