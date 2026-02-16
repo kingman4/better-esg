@@ -22,6 +22,7 @@ type Server struct {
 	submissions *repository.SubmissionRepo
 	files       *repository.SubmissionFileRepo
 	apiKeys     *repository.APIKeyRepo
+	users       *repository.UserRepo
 	acks        *repository.AckRepo
 	workflowLog *repository.WorkflowLogRepo
 	auditLog    *repository.AuditLogRepo
@@ -85,6 +86,7 @@ func New(cfg Config) (*Server, error) {
 		submissions: repository.NewSubmissionRepo(db, cfg.EncryptionKey),
 		files:       repository.NewSubmissionFileRepo(db),
 		apiKeys:     repository.NewAPIKeyRepo(db),
+		users:       repository.NewUserRepo(db),
 		acks:        repository.NewAckRepo(db),
 		workflowLog: repository.NewWorkflowLogRepo(db),
 		auditLog:    repository.NewAuditLogRepo(db),
@@ -130,25 +132,37 @@ func (s *Server) routes() {
 	// Public endpoints
 	s.router.HandleFunc("GET /health", s.handleHealth)
 
-	// Authenticated API endpoints
-	s.router.HandleFunc("POST /api/v1/submissions", s.withAuth(s.handleCreateSubmission))
+	// Submissions — write: admin + submitter, read: all authenticated roles
+	s.router.HandleFunc("POST /api/v1/submissions", s.withAuth(s.canWrite(s.handleCreateSubmission)))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}", s.withAuth(s.handleGetSubmission))
 	s.router.HandleFunc("GET /api/v1/submissions", s.withAuth(s.handleListSubmissions))
-	s.router.HandleFunc("POST /api/v1/submissions/{id}/submit", s.withAuth(s.handleSubmitToFDA))
-	s.router.HandleFunc("POST /api/v1/submissions/{id}/files", s.withAuth(s.handleUploadFile))
-	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.withAuth(s.handleFinalizeSubmission))
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/submit", s.withAuth(s.canWrite(s.handleSubmitToFDA)))
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/files", s.withAuth(s.canWrite(s.handleUploadFile)))
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/finalize", s.withAuth(s.canWrite(s.handleFinalizeSubmission)))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/status", s.withAuth(s.handleGetStatus))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/acknowledgements", s.withAuth(s.handleListAcknowledgements))
 
-	// Webhooks
-	s.router.HandleFunc("POST /api/v1/webhooks", s.withAuth(s.handleCreateWebhook))
+	// Webhooks — write/delete/test: admin only, read: all authenticated roles
+	s.router.HandleFunc("POST /api/v1/webhooks", s.withAuth(s.adminOnly(s.handleCreateWebhook)))
 	s.router.HandleFunc("GET /api/v1/webhooks", s.withAuth(s.handleListWebhooks))
 	s.router.HandleFunc("GET /api/v1/webhooks/{id}", s.withAuth(s.handleGetWebhook))
-	s.router.HandleFunc("DELETE /api/v1/webhooks/{id}", s.withAuth(s.handleDeleteWebhook))
-	s.router.HandleFunc("POST /api/v1/webhooks/{id}/test", s.withAuth(s.handleTestWebhook))
+	s.router.HandleFunc("DELETE /api/v1/webhooks/{id}", s.withAuth(s.adminOnly(s.handleDeleteWebhook)))
+	s.router.HandleFunc("POST /api/v1/webhooks/{id}/test", s.withAuth(s.adminOnly(s.handleTestWebhook)))
 
-	// Audit logs
-	s.router.HandleFunc("GET /api/v1/audit-logs", s.withAuth(s.handleListAuditLogs))
+	// Audit logs — admin + reviewer only
+	s.router.HandleFunc("GET /api/v1/audit-logs", s.withAuth(s.requireRole(s.handleListAuditLogs, "admin", "reviewer")))
+
+	// User management — admin only
+	s.router.HandleFunc("POST /api/v1/users", s.withAuth(s.adminOnly(s.handleCreateUser)))
+	s.router.HandleFunc("GET /api/v1/users", s.withAuth(s.adminOnly(s.handleListUsers)))
+	s.router.HandleFunc("GET /api/v1/users/{id}", s.withAuth(s.adminOnly(s.handleGetUser)))
+	s.router.HandleFunc("PATCH /api/v1/users/{id}", s.withAuth(s.adminOnly(s.handleUpdateUser)))
+	s.router.HandleFunc("DELETE /api/v1/users/{id}", s.withAuth(s.adminOnly(s.handleDeleteUser)))
+
+	// API key management — admin only
+	s.router.HandleFunc("POST /api/v1/api-keys", s.withAuth(s.adminOnly(s.handleCreateAPIKey)))
+	s.router.HandleFunc("GET /api/v1/api-keys", s.withAuth(s.adminOnly(s.handleListAPIKeys)))
+	s.router.HandleFunc("DELETE /api/v1/api-keys/{id}", s.withAuth(s.adminOnly(s.handleRevokeAPIKey)))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

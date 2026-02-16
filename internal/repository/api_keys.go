@@ -118,3 +118,49 @@ func (r *APIKeyRepo) TouchLastUsed(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = NOW() WHERE id = $1`, id)
 	return err
 }
+
+// ListByOrg returns API keys for an org with pagination.
+// Never exposes key_hash in the result set.
+func (r *APIKeyRepo) ListByOrg(ctx context.Context, orgID string, limit, offset int) ([]APIKey, error) {
+	query := `
+		SELECT id, org_id, user_id, key_prefix, name, role, is_active, last_used_at, expires_at, created_at
+		FROM api_keys
+		WHERE org_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3`
+
+	rows, err := r.db.QueryContext(ctx, query, orgID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("listing api keys: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []APIKey
+	for rows.Next() {
+		var k APIKey
+		if err := rows.Scan(
+			&k.ID, &k.OrgID, &k.UserID, &k.KeyPrefix,
+			&k.Name, &k.Role, &k.IsActive, &k.LastUsedAt, &k.ExpiresAt, &k.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning api key: %w", err)
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+// Revoke soft-deletes an API key by setting is_active = false.
+func (r *APIKeyRepo) Revoke(ctx context.Context, orgID, keyID string) error {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE api_keys SET is_active = false WHERE org_id = $1 AND id = $2 AND is_active = true`,
+		orgID, keyID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoking api key: %w", err)
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
