@@ -181,6 +181,11 @@ All endpoints except `/health` and `/api/v1/auth/*` require an `Authorization: B
 | `GET` | `/api/v1/submissions/{id}/status` | Poll FDA for current status |
 | `GET` | `/api/v1/submissions/{id}/acknowledgements` | List stored acknowledgements |
 | `PATCH` | `/api/v1/users/{id}/password` | Set user password (admin only) |
+| `POST` | `/api/v1/orgs` | Create an organization (admin only) |
+| `GET` | `/api/v1/orgs` | List organizations (admin only) |
+| `GET` | `/api/v1/orgs/{id}` | Get an organization (admin only) |
+| `PATCH` | `/api/v1/orgs/{id}` | Update an organization (admin only) |
+| `DELETE` | `/api/v1/orgs/{id}` | Soft-delete an organization (admin only) |
 
 ## Submission Workflow
 

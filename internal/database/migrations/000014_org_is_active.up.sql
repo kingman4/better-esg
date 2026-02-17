@@ -1,0 +1,1 @@
+ALTER TABLE organizations ADD COLUMN is_active BOOLEAN DEFAULT true NOT NULL;

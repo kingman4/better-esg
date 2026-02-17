@@ -189,6 +189,13 @@ func (s *Server) routes() {
 	s.router.HandleFunc("POST /api/v1/api-keys", s.withAuth(s.adminOnly(s.handleCreateAPIKey)))
 	s.router.HandleFunc("GET /api/v1/api-keys", s.withAuth(s.adminOnly(s.handleListAPIKeys)))
 	s.router.HandleFunc("DELETE /api/v1/api-keys/{id}", s.withAuth(s.adminOnly(s.handleRevokeAPIKey)))
+
+	// Organization management — admin only
+	s.router.HandleFunc("POST /api/v1/orgs", s.withAuth(s.adminOnly(s.handleCreateOrg)))
+	s.router.HandleFunc("GET /api/v1/orgs", s.withAuth(s.adminOnly(s.handleListOrgs)))
+	s.router.HandleFunc("GET /api/v1/orgs/{id}", s.withAuth(s.adminOnly(s.handleGetOrg)))
+	s.router.HandleFunc("PATCH /api/v1/orgs/{id}", s.withAuth(s.adminOnly(s.handleUpdateOrg)))
+	s.router.HandleFunc("DELETE /api/v1/orgs/{id}", s.withAuth(s.adminOnly(s.handleDeleteOrg)))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
