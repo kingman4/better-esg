@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // LocalStore implements Store using the local filesystem.
@@ -92,16 +91,3 @@ func (s *LocalStore) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-// validateKey rejects keys that could escape the base directory.
-func validateKey(key string) error {
-	if key == "" {
-		return ErrInvalidKey
-	}
-	if strings.Contains(key, "..") {
-		return ErrInvalidKey
-	}
-	if filepath.IsAbs(key) {
-		return ErrInvalidKey
-	}
-	return nil
-}

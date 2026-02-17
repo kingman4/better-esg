@@ -33,7 +33,12 @@ func main() {
 		EncryptionKey:      cfg.EncryptionKey,
 		StatusPollInterval: cfg.StatusPollInterval,
 		Logger:             logger,
+		StorageBackend:     cfg.StorageBackend,
 		StoragePath:        cfg.StoragePath,
+		S3Bucket:           cfg.S3Bucket,
+		S3Prefix:           cfg.S3Prefix,
+		S3Region:           cfg.S3Region,
+		S3Endpoint:         cfg.S3Endpoint,
 		JWTSecret:          cfg.JWTSecret,
 		AuthDisabled:       cfg.AuthDisabled,
 	})

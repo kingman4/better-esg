@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"time"
 
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/kingman4/better-esg/internal/database"
 	"github.com/kingman4/better-esg/internal/fdaclient"
 	"github.com/kingman4/better-esg/internal/repository"
@@ -57,7 +59,12 @@ type Config struct {
 	EncryptionKey      []byte        // 32 bytes for AES-256-GCM
 	StatusPollInterval time.Duration // how often to poll FDA for in-flight submissions (0 = disabled)
 	Logger             *slog.Logger  // structured logger (nil = slog.Default())
+	StorageBackend     string        // "local" (default) or "s3"
 	StoragePath        string        // base directory for file storage (default: "./data/uploads")
+	S3Bucket           string        // S3 bucket name (required when StorageBackend = "s3")
+	S3Prefix           string        // optional S3 key prefix (default: "uploads/")
+	S3Region           string        // AWS region (default: from AWS_REGION env)
+	S3Endpoint         string        // custom endpoint for S3-compatible services
 	JWTSecret          string        // HS256 signing key for JWT tokens (min 32 chars)
 	AuthDisabled       bool          // when true, skip API key auth and use a default org/user
 }
@@ -87,13 +94,40 @@ func New(cfg Config) (*Server, error) {
 		logger = slog.Default()
 	}
 
-	storagePath := cfg.StoragePath
-	if storagePath == "" {
-		storagePath = "./data/uploads"
-	}
-	store, err := storage.NewLocalStore(storagePath)
-	if err != nil {
-		return nil, fmt.Errorf("initializing file storage: %w", err)
+	var store storage.Store
+	switch cfg.StorageBackend {
+	case "s3":
+		awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+			func(o *awsconfig.LoadOptions) error {
+				if cfg.S3Region != "" {
+					o.Region = cfg.S3Region
+				}
+				return nil
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("loading AWS config: %w", err)
+		}
+		var s3Opts []func(*s3.Options)
+		if cfg.S3Endpoint != "" {
+			s3Opts = append(s3Opts, func(o *s3.Options) {
+				o.BaseEndpoint = &cfg.S3Endpoint
+				o.UsePathStyle = true // required for most S3-compatible services
+			})
+		}
+		s3Client := s3.NewFromConfig(awsCfg, s3Opts...)
+		store = storage.NewS3Store(cfg.S3Bucket, cfg.S3Prefix, s3Client)
+		logger.Info("using S3 storage backend", "bucket", cfg.S3Bucket, "prefix", cfg.S3Prefix)
+	default:
+		storagePath := cfg.StoragePath
+		if storagePath == "" {
+			storagePath = "./data/uploads"
+		}
+		localStore, err := storage.NewLocalStore(storagePath)
+		if err != nil {
+			return nil, fmt.Errorf("initializing file storage: %w", err)
+		}
+		store = localStore
 	}
 
 	s := &Server{

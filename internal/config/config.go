@@ -29,7 +29,14 @@ type Config struct {
 	LogLevel string // "debug", "info", "warn", "error" (default: "info")
 
 	// File storage
-	StoragePath string // base directory for uploaded files (default: "./data/uploads")
+	StorageBackend string // "local" (default) or "s3"
+	StoragePath    string // base directory for uploaded files (default: "./data/uploads") — used when StorageBackend = "local"
+
+	// S3 storage (used when StorageBackend = "s3")
+	S3Bucket   string // required when StorageBackend = "s3"
+	S3Prefix   string // optional key prefix (default: "uploads/")
+	S3Region   string // AWS region (default: from AWS_REGION env)
+	S3Endpoint string // custom endpoint for S3-compatible services (MinIO, etc.)
 
 	// JWT authentication
 	JWTSecret string // HS256 signing key (min 32 chars, required when AUTH_DISABLED=false)
@@ -90,6 +97,15 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
 
+	storageBackend := envOrDefault("STORAGE_BACKEND", "local")
+	if storageBackend != "local" && storageBackend != "s3" {
+		return nil, fmt.Errorf("STORAGE_BACKEND must be 'local' or 's3', got %q", storageBackend)
+	}
+	s3Bucket := os.Getenv("S3_BUCKET")
+	if storageBackend == "s3" && s3Bucket == "" {
+		return nil, fmt.Errorf("S3_BUCKET is required when STORAGE_BACKEND=s3")
+	}
+
 	return &Config{
 		Port:               port,
 		DatabaseURL:        dbURL,
@@ -102,7 +118,12 @@ func Load() (*Config, error) {
 		EncryptionKey:      encKey,
 		StatusPollInterval: pollInterval,
 		LogLevel:           logLevel,
+		StorageBackend:     storageBackend,
 		StoragePath:        envOrDefault("STORAGE_PATH", "./data/uploads"),
+		S3Bucket:           s3Bucket,
+		S3Prefix:           envOrDefault("S3_PREFIX", "uploads/"),
+		S3Region:           os.Getenv("S3_REGION"),
+		S3Endpoint:         os.Getenv("S3_ENDPOINT"),
 		JWTSecret:          jwtSecret,
 		AuthDisabled:       authDisabled,
 	}, nil

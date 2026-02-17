@@ -69,7 +69,12 @@ All configuration is via environment variables. Copy `.env.example` and fill in 
 | `DB_SSLMODE` | `disable` | SSL mode |
 | `STATUS_POLL_INTERVAL` | `60s` | How often to poll FDA for in-flight submission updates (0 = disabled) |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
-| `STORAGE_PATH` | `./data/uploads` | Base directory for persisting uploaded submission files |
+| `STORAGE_BACKEND` | `local` | Storage backend: `local` (filesystem) or `s3` (Amazon S3 / compatible) |
+| `STORAGE_PATH` | `./data/uploads` | Base directory for uploaded files (used when `STORAGE_BACKEND=local`) |
+| `S3_BUCKET` | | S3 bucket name (required when `STORAGE_BACKEND=s3`) |
+| `S3_PREFIX` | `uploads/` | Optional S3 key prefix |
+| `S3_REGION` | from `AWS_REGION` | AWS region for S3 |
+| `S3_ENDPOINT` | | Custom endpoint for S3-compatible services (MinIO, DigitalOcean Spaces, etc.) |
 | `JWT_SECRET` | *(none)* | HS256 signing key for JWT tokens (min 32 chars). Generate with `openssl rand -base64 48`. Required when `AUTH_DISABLED=false` and using JWT login. |
 | `AUTH_DISABLED` | `false` | Set to `true` to skip API key auth (local dev) |
 

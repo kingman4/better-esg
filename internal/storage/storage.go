@@ -6,10 +6,27 @@ import (
 	"context"
 	"errors"
 	"io"
+	"path/filepath"
+	"strings"
 )
 
 // ErrInvalidKey is returned when a storage key contains path traversal characters.
 var ErrInvalidKey = errors.New("invalid storage key")
+
+// validateKey rejects keys that could escape the base directory.
+// Shared by all storage backends.
+func validateKey(key string) error {
+	if key == "" {
+		return ErrInvalidKey
+	}
+	if strings.Contains(key, "..") {
+		return ErrInvalidKey
+	}
+	if filepath.IsAbs(key) {
+		return ErrInvalidKey
+	}
+	return nil
+}
 
 // ReadSeekCloser combines io.ReadSeeker and io.Closer.
 // Returned by Store.Open so callers can both seek (e.g. for streaming uploads)
