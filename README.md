@@ -70,6 +70,7 @@ All configuration is via environment variables. Copy `.env.example` and fill in 
 | `STATUS_POLL_INTERVAL` | `60s` | How often to poll FDA for in-flight submission updates (0 = disabled) |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `STORAGE_PATH` | `./data/uploads` | Base directory for persisting uploaded submission files |
+| `JWT_SECRET` | *(none)* | HS256 signing key for JWT tokens (min 32 chars). Generate with `openssl rand -base64 48`. Required when `AUTH_DISABLED=false` and using JWT login. |
 | `AUTH_DISABLED` | `false` | Set to `true` to skip API key auth (local dev) |
 
 ## Running
@@ -163,11 +164,14 @@ ID=$(./esg-cli create --name "Q1 Report" --type ANDA --files 2 | jq -r '.id')
 
 ## API Endpoints
 
-All endpoints except `/health` require an `Authorization: Bearer <api-key>` header (unless `AUTH_DISABLED=true`).
+All endpoints except `/health` and `/api/v1/auth/*` require an `Authorization: Bearer <token>` header (unless `AUTH_DISABLED=true`). The token can be either a JWT access token or an API key.
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check with DB connectivity |
+| `POST` | `/api/v1/auth/login` | Login with email/password/org_slug → JWT tokens |
+| `POST` | `/api/v1/auth/refresh` | Refresh an access token |
+| `POST` | `/api/v1/auth/logout` | Revoke a refresh token |
 | `POST` | `/api/v1/submissions` | Create a new submission |
 | `GET` | `/api/v1/submissions` | List submissions (`?limit=&offset=`) |
 | `GET` | `/api/v1/submissions/{id}` | Get a single submission |
@@ -176,6 +180,7 @@ All endpoints except `/health` require an `Authorization: Bearer <api-key>` head
 | `POST` | `/api/v1/submissions/{id}/finalize` | Finalize and submit to FDA |
 | `GET` | `/api/v1/submissions/{id}/status` | Poll FDA for current status |
 | `GET` | `/api/v1/submissions/{id}/acknowledgements` | List stored acknowledgements |
+| `PATCH` | `/api/v1/users/{id}/password` | Set user password (admin only) |
 
 ## Submission Workflow
 

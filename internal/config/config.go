@@ -31,6 +31,9 @@ type Config struct {
 	// File storage
 	StoragePath string // base directory for uploaded files (default: "./data/uploads")
 
+	// JWT authentication
+	JWTSecret string // HS256 signing key (min 32 chars, required when AUTH_DISABLED=false)
+
 	// When true, API key auth is skipped (local dev convenience)
 	AuthDisabled bool
 }
@@ -82,6 +85,11 @@ func Load() (*Config, error) {
 	logLevel := envOrDefault("LOG_LEVEL", "info")
 	authDisabled := os.Getenv("AUTH_DISABLED") == "true"
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if !authDisabled && jwtSecret != "" && len(jwtSecret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+
 	return &Config{
 		Port:               port,
 		DatabaseURL:        dbURL,
@@ -95,6 +103,7 @@ func Load() (*Config, error) {
 		StatusPollInterval: pollInterval,
 		LogLevel:           logLevel,
 		StoragePath:        envOrDefault("STORAGE_PATH", "./data/uploads"),
+		JWTSecret:          jwtSecret,
 		AuthDisabled:       authDisabled,
 	}, nil
 }

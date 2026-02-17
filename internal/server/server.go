@@ -18,25 +18,28 @@ import (
 
 // Server is the HTTP server that handles API requests.
 type Server struct {
-	db          *sql.DB
-	router      *http.ServeMux
-	submissions *repository.SubmissionRepo
-	files       *repository.SubmissionFileRepo
-	apiKeys     *repository.APIKeyRepo
-	users       *repository.UserRepo
-	acks        *repository.AckRepo
-	workflowLog *repository.WorkflowLogRepo
-	auditLog    *repository.AuditLogRepo
-	webhooks    *repository.WebhookRepo
-	deliveries  *repository.WebhookDeliveryRepo
-	storage     storage.Store
-	logger      *slog.Logger
-	fda          *fdaclient.Client
-	fdaUserEmail string // for auto-resolving user_id + company_id via GetCompanyInfo
+	db            *sql.DB
+	router        *http.ServeMux
+	submissions   *repository.SubmissionRepo
+	files         *repository.SubmissionFileRepo
+	apiKeys       *repository.APIKeyRepo
+	users         *repository.UserRepo
+	orgs          *repository.OrgRepo
+	refreshTokens *repository.RefreshTokenRepo
+	acks          *repository.AckRepo
+	workflowLog   *repository.WorkflowLogRepo
+	auditLog      *repository.AuditLogRepo
+	webhooks      *repository.WebhookRepo
+	deliveries    *repository.WebhookDeliveryRepo
+	storage       storage.Store
+	logger        *slog.Logger
+	fda           *fdaclient.Client
+	fdaUserEmail  string // for auto-resolving user_id + company_id via GetCompanyInfo
+	jwtSecret     string // HS256 signing key for JWT tokens
 
 	// When true, API key auth is skipped and a default org/user is used.
-	authDisabled bool
-	defaultOrgID string
+	authDisabled  bool
+	defaultOrgID  string
 	defaultUserID string
 
 	pollerCancel context.CancelFunc
@@ -55,6 +58,7 @@ type Config struct {
 	StatusPollInterval time.Duration // how often to poll FDA for in-flight submissions (0 = disabled)
 	Logger             *slog.Logger  // structured logger (nil = slog.Default())
 	StoragePath        string        // base directory for file storage (default: "./data/uploads")
+	JWTSecret          string        // HS256 signing key for JWT tokens (min 32 chars)
 	AuthDisabled       bool          // when true, skip API key auth and use a default org/user
 }
 
@@ -93,17 +97,19 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		db:          db,
-		router:      http.NewServeMux(),
-		submissions: repository.NewSubmissionRepo(db, cfg.EncryptionKey),
-		files:       repository.NewSubmissionFileRepo(db),
-		apiKeys:     repository.NewAPIKeyRepo(db),
-		users:       repository.NewUserRepo(db),
-		acks:        repository.NewAckRepo(db),
-		workflowLog: repository.NewWorkflowLogRepo(db),
-		auditLog:    repository.NewAuditLogRepo(db),
-		webhooks:    repository.NewWebhookRepo(db),
-		deliveries:  repository.NewWebhookDeliveryRepo(db),
+		db:            db,
+		router:        http.NewServeMux(),
+		submissions:   repository.NewSubmissionRepo(db, cfg.EncryptionKey),
+		files:         repository.NewSubmissionFileRepo(db),
+		apiKeys:       repository.NewAPIKeyRepo(db),
+		users:         repository.NewUserRepo(db),
+		orgs:          repository.NewOrgRepo(db),
+		refreshTokens: repository.NewRefreshTokenRepo(db),
+		acks:          repository.NewAckRepo(db),
+		workflowLog:   repository.NewWorkflowLogRepo(db),
+		auditLog:      repository.NewAuditLogRepo(db),
+		webhooks:      repository.NewWebhookRepo(db),
+		deliveries:    repository.NewWebhookDeliveryRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -113,6 +119,7 @@ func New(cfg Config) (*Server, error) {
 		}),
 		fdaUserEmail: cfg.FDAUserEmail,
 		storage:      store,
+		jwtSecret:    cfg.JWTSecret,
 		logger:       logger,
 	}
 	if cfg.AuthDisabled {
@@ -145,6 +152,11 @@ func (s *Server) routes() {
 	// Public endpoints
 	s.router.HandleFunc("GET /health", s.handleHealth)
 
+	// Auth — public (no withAuth)
+	s.router.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
+	s.router.HandleFunc("POST /api/v1/auth/refresh", s.handleRefresh)
+	s.router.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
+
 	// Submissions — write: admin + submitter, read: all authenticated roles
 	s.router.HandleFunc("POST /api/v1/submissions", s.withAuth(s.canWrite(s.handleCreateSubmission)))
 	s.router.HandleFunc("GET /api/v1/submissions/{id}", s.withAuth(s.handleGetSubmission))
@@ -171,6 +183,7 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /api/v1/users/{id}", s.withAuth(s.adminOnly(s.handleGetUser)))
 	s.router.HandleFunc("PATCH /api/v1/users/{id}", s.withAuth(s.adminOnly(s.handleUpdateUser)))
 	s.router.HandleFunc("DELETE /api/v1/users/{id}", s.withAuth(s.adminOnly(s.handleDeleteUser)))
+	s.router.HandleFunc("PATCH /api/v1/users/{id}/password", s.withAuth(s.adminOnly(s.handleSetPassword)))
 
 	// API key management — admin only
 	s.router.HandleFunc("POST /api/v1/api-keys", s.withAuth(s.adminOnly(s.handleCreateAPIKey)))

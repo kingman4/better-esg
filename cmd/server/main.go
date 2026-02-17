@@ -34,6 +34,7 @@ func main() {
 		StatusPollInterval: cfg.StatusPollInterval,
 		Logger:             logger,
 		StoragePath:        cfg.StoragePath,
+		JWTSecret:          cfg.JWTSecret,
 		AuthDisabled:       cfg.AuthDisabled,
 	})
 	if err != nil {
