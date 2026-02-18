@@ -106,6 +106,10 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 				"ack_type":      ack.Type,
 				"status":        fdaStatus.Status,
 			})
+			s.notifyEvent(sub.OrgID, WebhookEvent{
+				Type: "acknowledgement.received",
+				Data: map[string]any{"submission_id": sub.ID, "ack_id": ack.AcknowledgementID, "ack_type": ack.Type},
+			})
 		}
 	}
 }

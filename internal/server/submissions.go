@@ -117,6 +117,11 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) 
 		"file_count":      req.FileCount,
 	})
 
+	s.notifyEvent(orgID, WebhookEvent{
+		Type: "submission.created",
+		Data: map[string]any{"submission_id": sub.ID, "submission_name": sub.SubmissionName, "submission_type": sub.SubmissionType},
+	})
+
 	writeJSON(w, http.StatusCreated, toSubmissionResponse(sub))
 }
 

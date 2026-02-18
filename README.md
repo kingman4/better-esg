@@ -199,6 +199,11 @@ All endpoints except `/health` and `/api/v1/auth/*` require an `Authorization: B
 | `GET` | `/api/v1/orgs/{id}` | Get an organization (admin only) |
 | `PATCH` | `/api/v1/orgs/{id}` | Update an organization (admin only) |
 | `DELETE` | `/api/v1/orgs/{id}` | Soft-delete an organization (admin only) |
+| `POST` | `/api/v1/notifications/preferences` | Create/upsert a notification preference |
+| `GET` | `/api/v1/notifications/preferences` | List your notification preferences |
+| `GET` | `/api/v1/notifications/preferences/{channel}` | Get a notification preference by channel |
+| `PATCH` | `/api/v1/notifications/preferences/{channel}` | Update a notification preference |
+| `DELETE` | `/api/v1/notifications/preferences/{channel}` | Delete a notification preference |
 
 ## Submission Workflow
 

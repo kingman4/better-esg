@@ -33,11 +33,12 @@ type Server struct {
 	workflowLog   *repository.WorkflowLogRepo
 	auditLog      *repository.AuditLogRepo
 	webhooks      *repository.WebhookRepo
-	deliveries     *repository.WebhookDeliveryRepo
-	uploadSessions *repository.UploadSessionRepo
-	backupCodes    *repository.BackupCodeRepo
-	storage        storage.Store
-	logger        *slog.Logger
+	deliveries        *repository.WebhookDeliveryRepo
+	uploadSessions    *repository.UploadSessionRepo
+	backupCodes       *repository.BackupCodeRepo
+	notificationPrefs *repository.NotificationPreferenceRepo
+	storage           storage.Store
+	logger            *slog.Logger
 	fda           *fdaclient.Client
 	fdaUserEmail  string // for auto-resolving user_id + company_id via GetCompanyInfo
 	jwtSecret     string // HS256 signing key for JWT tokens
@@ -150,9 +151,10 @@ func New(cfg Config) (*Server, error) {
 		workflowLog:   repository.NewWorkflowLogRepo(db),
 		auditLog:      repository.NewAuditLogRepo(db),
 		webhooks:      repository.NewWebhookRepo(db),
-		deliveries:     repository.NewWebhookDeliveryRepo(db),
-		uploadSessions: repository.NewUploadSessionRepo(db),
-		backupCodes:    repository.NewBackupCodeRepo(db),
+		deliveries:        repository.NewWebhookDeliveryRepo(db),
+		uploadSessions:    repository.NewUploadSessionRepo(db),
+		backupCodes:       repository.NewBackupCodeRepo(db),
+		notificationPrefs: repository.NewNotificationPreferenceRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -245,6 +247,13 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /api/v1/submissions/{id}/uploads/{uploadId}", s.withAuth(s.handleGetUploadProgress))
 	s.router.HandleFunc("POST /api/v1/submissions/{id}/uploads/{uploadId}/complete", s.withAuth(s.canWrite(s.handleCompleteUpload)))
 
+	// Notification preferences — all authenticated users manage their own
+	s.router.HandleFunc("POST /api/v1/notifications/preferences", s.withAuth(s.handleCreateNotificationPref))
+	s.router.HandleFunc("GET /api/v1/notifications/preferences", s.withAuth(s.handleListNotificationPrefs))
+	s.router.HandleFunc("GET /api/v1/notifications/preferences/{channel}", s.withAuth(s.handleGetNotificationPref))
+	s.router.HandleFunc("PATCH /api/v1/notifications/preferences/{channel}", s.withAuth(s.handleUpdateNotificationPref))
+	s.router.HandleFunc("DELETE /api/v1/notifications/preferences/{channel}", s.withAuth(s.handleDeleteNotificationPref))
+
 	// Organization management — admin only
 	s.router.HandleFunc("POST /api/v1/orgs", s.withAuth(s.adminOnly(s.handleCreateOrg)))
 	s.router.HandleFunc("GET /api/v1/orgs", s.withAuth(s.adminOnly(s.handleListOrgs)))
@@ -303,6 +312,19 @@ func (s *Server) transitionState(ctx context.Context, subID, fromWorkflow, newSt
 		s.logger.Warn("failed to log workflow transition",
 			"from", fromWorkflow, "to", newWorkflow, "submission_id", subID, "error", err)
 	}
+
+	// Fire notification event for workflow state changes
+	if eventType := mapWorkflowToEvent(newWorkflow); eventType != "" {
+		var orgID, subName string
+		err := s.db.QueryRowContext(ctx, `SELECT org_id, submission_name FROM submissions WHERE id = $1`, subID).Scan(&orgID, &subName)
+		if err == nil {
+			s.notifyEvent(orgID, WebhookEvent{
+				Type: eventType,
+				Data: map[string]any{"submission_id": subID, "submission_name": subName, "status": newStatus},
+			})
+		}
+	}
+
 	return nil
 }
 
