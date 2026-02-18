@@ -32,8 +32,9 @@ type Server struct {
 	workflowLog   *repository.WorkflowLogRepo
 	auditLog      *repository.AuditLogRepo
 	webhooks      *repository.WebhookRepo
-	deliveries    *repository.WebhookDeliveryRepo
-	storage       storage.Store
+	deliveries     *repository.WebhookDeliveryRepo
+	uploadSessions *repository.UploadSessionRepo
+	storage        storage.Store
 	logger        *slog.Logger
 	fda           *fdaclient.Client
 	fdaUserEmail  string // for auto-resolving user_id + company_id via GetCompanyInfo
@@ -143,7 +144,8 @@ func New(cfg Config) (*Server, error) {
 		workflowLog:   repository.NewWorkflowLogRepo(db),
 		auditLog:      repository.NewAuditLogRepo(db),
 		webhooks:      repository.NewWebhookRepo(db),
-		deliveries:    repository.NewWebhookDeliveryRepo(db),
+		deliveries:     repository.NewWebhookDeliveryRepo(db),
+		uploadSessions: repository.NewUploadSessionRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -223,6 +225,12 @@ func (s *Server) routes() {
 	s.router.HandleFunc("POST /api/v1/api-keys", s.withAuth(s.adminOnly(s.handleCreateAPIKey)))
 	s.router.HandleFunc("GET /api/v1/api-keys", s.withAuth(s.adminOnly(s.handleListAPIKeys)))
 	s.router.HandleFunc("DELETE /api/v1/api-keys/{id}", s.withAuth(s.adminOnly(s.handleRevokeAPIKey)))
+
+	// Chunked (resumable) uploads — write: admin + submitter, read: all authenticated
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/uploads", s.withAuth(s.canWrite(s.handleInitiateUpload)))
+	s.router.HandleFunc("PUT /api/v1/submissions/{id}/uploads/{uploadId}/chunks/{index}", s.withAuth(s.canWrite(s.handleUploadChunk)))
+	s.router.HandleFunc("GET /api/v1/submissions/{id}/uploads/{uploadId}", s.withAuth(s.handleGetUploadProgress))
+	s.router.HandleFunc("POST /api/v1/submissions/{id}/uploads/{uploadId}/complete", s.withAuth(s.canWrite(s.handleCompleteUpload)))
 
 	// Organization management — admin only
 	s.router.HandleFunc("POST /api/v1/orgs", s.withAuth(s.adminOnly(s.handleCreateOrg)))

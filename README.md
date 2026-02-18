@@ -181,7 +181,11 @@ All endpoints except `/health` and `/api/v1/auth/*` require an `Authorization: B
 | `GET` | `/api/v1/submissions` | List submissions (`?limit=&offset=`) |
 | `GET` | `/api/v1/submissions/{id}` | Get a single submission |
 | `POST` | `/api/v1/submissions/{id}/submit` | Initiate FDA workflow |
-| `POST` | `/api/v1/submissions/{id}/files` | Upload a file (multipart) |
+| `POST` | `/api/v1/submissions/{id}/files` | Upload a file (multipart, single request) |
+| `POST` | `/api/v1/submissions/{id}/uploads` | Initiate a chunked (resumable) upload |
+| `PUT` | `/api/v1/submissions/{id}/uploads/{uploadId}/chunks/{index}` | Upload a single chunk |
+| `GET` | `/api/v1/submissions/{id}/uploads/{uploadId}` | Get upload progress (for resume) |
+| `POST` | `/api/v1/submissions/{id}/uploads/{uploadId}/complete` | Reassemble chunks and upload to FDA |
 | `POST` | `/api/v1/submissions/{id}/finalize` | Finalize and submit to FDA |
 | `GET` | `/api/v1/submissions/{id}/status` | Poll FDA for current status |
 | `GET` | `/api/v1/submissions/{id}/acknowledgements` | List stored acknowledgements |
