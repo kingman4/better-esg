@@ -11,6 +11,7 @@ import (
 // createSubmissionRequest is the JSON body for POST /api/v1/submissions.
 // org_id and created_by come from the authenticated API key context.
 type createSubmissionRequest struct {
+	TemplateID         string `json:"template_id,omitempty"`
 	FDACenter          string `json:"fda_center"`
 	SubmissionType     string `json:"submission_type"`
 	SubmissionName     string `json:"submission_name"`
@@ -75,6 +76,34 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
+	}
+
+	// If a template_id is provided, merge template defaults into empty request fields.
+	if req.TemplateID != "" {
+		tmpl, err := s.templates.GetByID(r.Context(), orgID, req.TemplateID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to look up template"})
+			return
+		}
+		if tmpl == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "template not found"})
+			return
+		}
+		if req.FDACenter == "" && tmpl.FDACenter.Valid {
+			req.FDACenter = tmpl.FDACenter.String
+		}
+		if req.SubmissionType == "" {
+			req.SubmissionType = tmpl.SubmissionType
+		}
+		if req.SubmissionProtocol == "" {
+			req.SubmissionProtocol = tmpl.SubmissionProtocol
+		}
+		if req.FileCount == 0 {
+			req.FileCount = tmpl.DefaultFileCount
+		}
+		if req.Description == "" && tmpl.Description.Valid {
+			req.Description = tmpl.Description.String
+		}
 	}
 
 	if req.SubmissionType == "" || req.SubmissionName == "" {

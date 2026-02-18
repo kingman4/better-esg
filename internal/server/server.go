@@ -37,6 +37,7 @@ type Server struct {
 	uploadSessions    *repository.UploadSessionRepo
 	backupCodes       *repository.BackupCodeRepo
 	notificationPrefs *repository.NotificationPreferenceRepo
+	templates         *repository.SubmissionTemplateRepo
 	storage           storage.Store
 	logger            *slog.Logger
 	fda           *fdaclient.Client
@@ -155,6 +156,7 @@ func New(cfg Config) (*Server, error) {
 		uploadSessions:    repository.NewUploadSessionRepo(db),
 		backupCodes:       repository.NewBackupCodeRepo(db),
 		notificationPrefs: repository.NewNotificationPreferenceRepo(db),
+		templates:         repository.NewSubmissionTemplateRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -253,6 +255,13 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /api/v1/notifications/preferences/{channel}", s.withAuth(s.handleGetNotificationPref))
 	s.router.HandleFunc("PATCH /api/v1/notifications/preferences/{channel}", s.withAuth(s.handleUpdateNotificationPref))
 	s.router.HandleFunc("DELETE /api/v1/notifications/preferences/{channel}", s.withAuth(s.handleDeleteNotificationPref))
+
+	// Submission templates — write: admin + submitter, delete: admin only
+	s.router.HandleFunc("POST /api/v1/submission-templates", s.withAuth(s.canWrite(s.handleCreateTemplate)))
+	s.router.HandleFunc("GET /api/v1/submission-templates", s.withAuth(s.handleListTemplates))
+	s.router.HandleFunc("GET /api/v1/submission-templates/{id}", s.withAuth(s.handleGetTemplate))
+	s.router.HandleFunc("PATCH /api/v1/submission-templates/{id}", s.withAuth(s.canWrite(s.handleUpdateTemplate)))
+	s.router.HandleFunc("DELETE /api/v1/submission-templates/{id}", s.withAuth(s.adminOnly(s.handleDeleteTemplate)))
 
 	// Organization management — admin only
 	s.router.HandleFunc("POST /api/v1/orgs", s.withAuth(s.adminOnly(s.handleCreateOrg)))

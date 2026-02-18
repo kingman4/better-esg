@@ -204,6 +204,11 @@ All endpoints except `/health` and `/api/v1/auth/*` require an `Authorization: B
 | `GET` | `/api/v1/notifications/preferences/{channel}` | Get a notification preference by channel |
 | `PATCH` | `/api/v1/notifications/preferences/{channel}` | Update a notification preference |
 | `DELETE` | `/api/v1/notifications/preferences/{channel}` | Delete a notification preference |
+| `POST` | `/api/v1/submission-templates` | Create a submission template |
+| `GET` | `/api/v1/submission-templates` | List submission templates (`?limit=&offset=`) |
+| `GET` | `/api/v1/submission-templates/{id}` | Get a submission template |
+| `PATCH` | `/api/v1/submission-templates/{id}` | Update a submission template |
+| `DELETE` | `/api/v1/submission-templates/{id}` | Soft-delete a submission template (admin only) |
 
 ## Submission Workflow
 
