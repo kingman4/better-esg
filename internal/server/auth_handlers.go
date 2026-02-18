@@ -15,11 +15,18 @@ type loginRequest struct {
 	OrgSlug  string `json:"org_slug"`
 }
 
-// loginResponse is returned on successful login.
+// loginResponse is returned on successful login (when MFA is not required).
 type loginResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int    `json:"expires_in"` // seconds
+}
+
+// mfaChallengeResponse is returned when MFA verification is needed.
+type mfaChallengeResponse struct {
+	MFARequired    bool   `json:"mfa_required"`
+	MFASetupNeeded bool   `json:"mfa_setup_needed,omitempty"` // true when org requires MFA but user hasn't set it up
+	MFAToken       string `json:"mfa_token"`
 }
 
 // refreshRequest is the JSON body for POST /api/v1/auth/refresh.
@@ -87,7 +94,31 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sign tokens
+	// Check if MFA is required (org-level or user-level)
+	mfaRequired := user.MFAEnabled || org.MFARequired
+	if mfaRequired {
+		mfaToken, err := auth.SignMFAToken(user.ID, org.ID, user.Role, s.jwtSecret)
+		if err != nil {
+			s.logger.Error("failed to sign MFA token", "error", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "authentication error"})
+			return
+		}
+
+		s.audit(r, "login_mfa_required", "user", user.ID, map[string]any{
+			"org_slug":       req.OrgSlug,
+			"email":          req.Email,
+			"mfa_setup_needed": !user.MFAEnabled && org.MFARequired,
+		})
+
+		writeJSON(w, http.StatusOK, mfaChallengeResponse{
+			MFARequired:    true,
+			MFASetupNeeded: !user.MFAEnabled && org.MFARequired,
+			MFAToken:       mfaToken,
+		})
+		return
+	}
+
+	// No MFA — issue tokens directly
 	accessToken, err := auth.SignAccessToken(user.ID, org.ID, user.Role, s.jwtSecret)
 	if err != nil {
 		s.logger.Error("failed to sign access token", "error", err)

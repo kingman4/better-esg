@@ -174,9 +174,13 @@ All endpoints except `/health` and `/api/v1/auth/*` require an `Authorization: B
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/health` | Health check with DB connectivity |
-| `POST` | `/api/v1/auth/login` | Login with email/password/org_slug → JWT tokens |
+| `POST` | `/api/v1/auth/login` | Login with email/password/org_slug → JWT tokens (or MFA challenge) |
 | `POST` | `/api/v1/auth/refresh` | Refresh an access token |
 | `POST` | `/api/v1/auth/logout` | Revoke a refresh token |
+| `POST` | `/api/v1/auth/verify-mfa` | Complete MFA login with TOTP code or backup code |
+| `POST` | `/api/v1/auth/mfa/setup` | Start MFA setup (returns TOTP secret + QR URL + backup codes) |
+| `POST` | `/api/v1/auth/mfa/confirm` | Confirm MFA setup with a valid TOTP code |
+| `DELETE` | `/api/v1/auth/mfa` | Disable MFA for a user (admin only) |
 | `POST` | `/api/v1/submissions` | Create a new submission |
 | `GET` | `/api/v1/submissions` | List submissions (`?limit=&offset=`) |
 | `GET` | `/api/v1/submissions/{id}` | Get a single submission |

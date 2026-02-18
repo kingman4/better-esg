@@ -11,13 +11,18 @@ const (
 	issuer             = "esg-platform"
 	accessTokenExpiry  = 15 * time.Minute
 	refreshTokenExpiry = 7 * 24 * time.Hour
+	mfaTokenExpiry     = 5 * time.Minute
 )
+
+// TokenTypeMFA identifies a short-lived MFA challenge token.
+const TokenTypeMFA = "mfa"
 
 // Claims are the JWT claims carried in access tokens.
 type Claims struct {
 	UserID string `json:"uid"`
 	OrgID  string `json:"oid"`
 	Role   string `json:"role,omitempty"`
+	Type   string `json:"type,omitempty"` // "mfa" for MFA challenge tokens; empty for access tokens
 	jwt.RegisteredClaims
 }
 
@@ -52,6 +57,28 @@ func SignRefreshToken(userID, orgID, secret string) (string, error) {
 			Subject:   userID,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(refreshTokenExpiry)),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
+}
+
+// SignMFAToken creates a short-lived JWT (5-minute expiry) for the MFA challenge step.
+// The token carries Type="mfa" and includes the user's role so we can issue a full
+// access token after TOTP verification without an extra DB lookup.
+func SignMFAToken(userID, orgID, role, secret string) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID: userID,
+		OrgID:  orgID,
+		Role:   role,
+		Type:   TokenTypeMFA,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   userID,
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(mfaTokenExpiry)),
 		},
 	}
 

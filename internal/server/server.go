@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -34,11 +35,16 @@ type Server struct {
 	webhooks      *repository.WebhookRepo
 	deliveries     *repository.WebhookDeliveryRepo
 	uploadSessions *repository.UploadSessionRepo
+	backupCodes    *repository.BackupCodeRepo
 	storage        storage.Store
 	logger        *slog.Logger
 	fda           *fdaclient.Client
 	fdaUserEmail  string // for auto-resolving user_id + company_id via GetCompanyInfo
 	jwtSecret     string // HS256 signing key for JWT tokens
+
+	// MFA temp secrets: holds unconfirmed TOTP secrets between setup and confirm calls.
+	// Key: userID (string), Value: tempMFASecret.
+	mfaTempSecrets sync.Map
 
 	// When true, API key auth is skipped and a default org/user is used.
 	authDisabled  bool
@@ -146,6 +152,7 @@ func New(cfg Config) (*Server, error) {
 		webhooks:      repository.NewWebhookRepo(db),
 		deliveries:     repository.NewWebhookDeliveryRepo(db),
 		uploadSessions: repository.NewUploadSessionRepo(db),
+		backupCodes:    repository.NewBackupCodeRepo(db),
 		fda: fdaclient.New(fdaclient.Config{
 			ExternalBaseURL: cfg.FDAExternalBaseURL,
 			UploadBaseURL:   cfg.FDAUploadBaseURL,
@@ -192,6 +199,12 @@ func (s *Server) routes() {
 	s.router.HandleFunc("POST /api/v1/auth/login", s.handleLogin)
 	s.router.HandleFunc("POST /api/v1/auth/refresh", s.handleRefresh)
 	s.router.HandleFunc("POST /api/v1/auth/logout", s.handleLogout)
+	s.router.HandleFunc("POST /api/v1/auth/verify-mfa", s.handleVerifyMFA)
+
+	// MFA management — authenticated
+	s.router.HandleFunc("POST /api/v1/auth/mfa/setup", s.withAuth(s.handleMFASetup))
+	s.router.HandleFunc("POST /api/v1/auth/mfa/confirm", s.withAuth(s.handleMFAConfirm))
+	s.router.HandleFunc("DELETE /api/v1/auth/mfa", s.withAuth(s.adminOnly(s.handleMFADisable)))
 
 	// Submissions — write: admin + submitter, read: all authenticated roles
 	s.router.HandleFunc("POST /api/v1/submissions", s.withAuth(s.canWrite(s.handleCreateSubmission)))

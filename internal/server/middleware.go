@@ -45,10 +45,16 @@ func looksLikeJWT(token string) bool {
 }
 
 // authenticateJWT verifies a JWT access token and sets auth context.
+// Rejects MFA challenge tokens — those must be used via /api/v1/auth/verify-mfa only.
 func (s *Server) authenticateJWT(next http.HandlerFunc, w http.ResponseWriter, r *http.Request, token string) {
 	claims, err := auth.VerifyToken(token, s.jwtSecret)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
+		return
+	}
+
+	if claims.Type == auth.TokenTypeMFA {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "MFA verification required"})
 		return
 	}
 
