@@ -1,0 +1,15 @@
+name: Protect main branch
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject PRs not from dev
+        if: github.head_ref != 'dev'
+        run: |
+          echo "::error::PRs into main must come from the dev branch. Please merge into dev first, then PR dev → main."
+          exit 1

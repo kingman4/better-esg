@@ -10,13 +10,17 @@ Licensed under Apache 2.0.
 git clone https://github.com/kingman4/better-esg.git
 cd better-esg
 cp .env.example .env    # edit with your FDA credentials
-make up                  # builds CLI + starts server on :8080 + Postgres
-
-# In another terminal:
-./esg-cli send --file report.xml
+make up                 # starts server on :8080 + Postgres
 ```
 
-One command to submit a file to FDA. No Go installation required — the CLI is cross-compiled via Docker.
+Open `http://localhost:8080` to use the web UI, or submit via the CLI:
+
+```bash
+make build-cli                      # one-time: cross-compiles esg-cli via Docker
+./esg-cli send --file report.xml    # submit a file to FDA in one shot
+```
+
+No Go installation required — everything runs in Docker.
 
 ## Architecture
 
