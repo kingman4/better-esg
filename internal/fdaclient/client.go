@@ -66,7 +66,7 @@ type CredentialRequest struct {
 	SubmissionName     string `json:"submission_name"`
 	SubmissionProtocol string `json:"submission_protocol"`
 	FileCount          int    `json:"file_count"`
-	Description        string `json:"description,omitempty"`
+	Description        string `json:"description"`
 }
 
 // CredentialResponse is the JSON response from the FDA credential submission endpoint.
@@ -78,16 +78,17 @@ type CredentialResponse struct {
 	ESGNGDescription string `json:"esgngdescription"`
 }
 
-// PayloadResponse is the JSON response from the FDA file payload endpoint.
-type PayloadResponse struct {
-	PayloadID string       `json:"payloadId"`
-	Links     PayloadLinks `json:"links"`
+// payloadResponseWrapper is the outer JSON envelope from the FDA payload endpoint.
+// The actual data is nested under a "data" key.
+type payloadResponseWrapper struct {
+	Data PayloadResponse `json:"data"`
 }
 
-// PayloadLinks contains the upload and submit URLs returned by the payload endpoint.
-type PayloadLinks struct {
-	UploadLink string `json:"uploadLink"`
-	SubmitLink string `json:"submitLink"`
+// PayloadResponse is the payload data returned by the FDA file payload endpoint.
+type PayloadResponse struct {
+	PayloadID      string `json:"payloadId"`
+	UploadFileLink string `json:"uploadFileLink"`
+	SubmitFormLink string `json:"submitFormLink"`
 }
 
 // UploadResponse is the JSON response from the FDA file upload endpoint.
@@ -100,9 +101,10 @@ type UploadResponse struct {
 
 // SubmitRequest is the JSON body sent to the FDA file submit endpoint.
 // Uses temp credentials from the credential step — no Bearer token.
+// Field names per FDA spec: "username", "password", "sha256_checksum".
 type SubmitRequest struct {
-	TempUser       string `json:"temp_user"`
-	TempPassword   string `json:"temp_password"`
+	TempUser       string `json:"username"`
+	TempPassword   string `json:"password"`
 	SHA256Checksum string `json:"sha256_checksum"`
 }
 
@@ -185,13 +187,12 @@ func (c *Client) GetToken(ctx context.Context) (string, error) {
 // fetchToken requests a new OAuth2 token from the FDA token endpoint.
 // Retries transient failures with exponential backoff (1s, 2s, 4s, 8s).
 func (c *Client) fetchToken(ctx context.Context) (string, int, error) {
-	tokenURL := c.config.ExternalBaseURL + "/as/token.oauth2"
+	// FDA spec: grant_type and scope go in query params; client_id and client_secret in form body.
+	tokenURL := c.config.ExternalBaseURL + "/as/token.oauth2?grant_type=client_credentials&scope=openid%20profile"
 
 	form := url.Values{}
 	form.Set("client_id", c.config.ClientID)
 	form.Set("client_secret", c.config.ClientSecret)
-	form.Set("grant_type", "client_credentials")
-	form.Set("scope", "openid profile")
 	formBody := form.Encode()
 
 	var token string
@@ -285,7 +286,7 @@ func (c *Client) SubmitCredentials(ctx context.Context, cred CredentialRequest) 
 			return &permanentError{err: fmt.Errorf("creating credential request: %w", err)}
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("accesstoken", token)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -335,19 +336,31 @@ func (c *Client) GetPayload(ctx context.Context) (*PayloadResponse, error) {
 		}
 		defer resp.Body.Close()
 
+		bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("reading payload response: %w", err)}
+		}
+
 		if resp.StatusCode != http.StatusOK {
 			var errResp errorResponse
-			json.NewDecoder(resp.Body).Decode(&errResp)
-			fdaErr := fmt.Errorf("payload request returned %d: %s (code: %s)",
-				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			json.Unmarshal(bodyBytes, &errResp)
+			fdaErr := fmt.Errorf("payload request returned %d: %s (code: %s, body: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, truncate(string(bodyBytes), 500))
 			if isRetryable(resp.StatusCode) {
 				return &retryableError{err: fdaErr}
 			}
 			return &permanentError{err: fdaErr}
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return &permanentError{err: fmt.Errorf("decoding payload response: %w", err)}
+		fmt.Printf("[DEBUG] GetPayload raw response: %s\n", truncate(string(bodyBytes), 1000))
+
+		var wrapper payloadResponseWrapper
+		if err := json.Unmarshal(bodyBytes, &wrapper); err != nil {
+			return &permanentError{err: fmt.Errorf("decoding payload response: %w (body: %s)", err, truncate(string(bodyBytes), 500))}
+		}
+		result = wrapper.Data
+		if result.PayloadID == "" {
+			return &permanentError{err: fmt.Errorf("empty payloadId in response (body: %s)", truncate(string(bodyBytes), 500))}
 		}
 		return nil
 	})
@@ -403,7 +416,7 @@ func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, fil
 		}
 		req.ContentLength = contentLength
 		req.Header.Set("Content-Type", contentType)
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("accesstoken", token)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -412,10 +425,11 @@ func (c *Client) UploadFile(ctx context.Context, payloadID, fileName string, fil
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 			var errResp errorResponse
-			json.NewDecoder(resp.Body).Decode(&errResp)
-			fdaErr := fmt.Errorf("upload request returned %d: %s (code: %s)",
-				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			json.Unmarshal(respBody, &errResp)
+			fdaErr := fmt.Errorf("upload request returned %d: %s (code: %s, url: %s, body: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, uploadURL, truncate(string(respBody), 500))
 			if isRetryable(resp.StatusCode) {
 				return &retryableError{err: fdaErr}
 			}
@@ -460,18 +474,23 @@ func (c *Client) SubmitPayload(ctx context.Context, payloadID string, submit Sub
 		}
 		defer resp.Body.Close()
 
+		respBody, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		if err != nil {
+			return &permanentError{err: fmt.Errorf("reading submit response: %w", err)}
+		}
+
 		if resp.StatusCode != http.StatusOK {
 			var errResp errorResponse
-			json.NewDecoder(resp.Body).Decode(&errResp)
-			fdaErr := fmt.Errorf("submit request returned %d: %s (code: %s)",
-				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			json.Unmarshal(respBody, &errResp)
+			fdaErr := fmt.Errorf("submit request returned %d: %s (code: %s, body: %s)",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, truncate(string(respBody), 500))
 			if isRetryable(resp.StatusCode) {
 				return &retryableError{err: fdaErr}
 			}
 			return &permanentError{err: fdaErr}
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		if err := json.Unmarshal(respBody, &result); err != nil {
 			return &permanentError{err: fmt.Errorf("decoding submit response: %w", err)}
 		}
 		return nil
@@ -502,7 +521,7 @@ func (c *Client) GetCompanyInfo(ctx context.Context, email string) (*CompanyInfo
 		if err != nil {
 			return &permanentError{err: fmt.Errorf("creating company info request: %w", err)}
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("accesstoken", token)
 		req.Header.Set("Accept", "application/json")
 
 		resp, err := c.httpClient.Do(req)
@@ -583,7 +602,7 @@ func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*Submi
 		if err != nil {
 			return &permanentError{err: fmt.Errorf("creating status request: %w", err)}
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("accesstoken", token)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -630,7 +649,7 @@ func (c *Client) GetAcknowledgement(ctx context.Context, acknowledgementID strin
 		if err != nil {
 			return &permanentError{err: fmt.Errorf("creating acknowledgement request: %w", err)}
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("accesstoken", token)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {

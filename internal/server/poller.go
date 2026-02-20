@@ -8,7 +8,7 @@ import (
 )
 
 // pollableStates are the workflow states that need background FDA polling.
-var pollableStates = []string{"SUBMITTED", "PROCESSING"}
+var pollableStates = []string{"SUBMITTED", "UPLOADING_TO_FDA", "SUBMITTED_TO_CENTER", "PROCESSING"}
 
 // startStatusPoller launches a background goroutine that periodically polls FDA
 // for all in-flight submissions and updates the local DB.
@@ -78,7 +78,11 @@ func (s *Server) pollSubmission(ctx context.Context, sub *repository.Submission)
 		if err := s.transitionState(ctx, sub.ID, sub.WorkflowState, localStatus, workflowState, nil, ""); err != nil {
 			s.logger.Error("poller: failed to update status", "submission_id", sub.ID, "error", err)
 		} else {
-			s.logger.Info("poller: submission status changed", "submission_id", sub.ID, "core_id", coreID, "old_status", sub.Status, "new_status", localStatus, "old_workflow", sub.WorkflowState, "new_workflow", workflowState)
+			s.logger.Info("poller: submission status changed",
+				"submission_id", sub.ID, "core_id", coreID,
+				"fda_status", fdaStatus.Status,
+				"old_status", sub.Status, "new_status", localStatus,
+				"old_workflow", sub.WorkflowState, "new_workflow", workflowState)
 		}
 	}
 

@@ -9,9 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"io/fs"
+
 	"github.com/kingman4/better-esg/internal/config"
 	"github.com/kingman4/better-esg/internal/logging"
 	"github.com/kingman4/better-esg/internal/server"
+	"github.com/kingman4/better-esg/web"
 )
 
 func main() {
@@ -41,6 +44,7 @@ func main() {
 		S3Endpoint:         cfg.S3Endpoint,
 		JWTSecret:          cfg.JWTSecret,
 		AuthDisabled:       cfg.AuthDisabled,
+		StaticFS:           mustSubFS(web.StaticFS, "static"),
 	})
 	if err != nil {
 		logger.Error("failed to create server", "error", err)
@@ -80,4 +84,12 @@ func main() {
 	}
 
 	logger.Info("server stopped")
+}
+
+func mustSubFS(fsys fs.FS, dir string) fs.FS {
+	sub, err := fs.Sub(fsys, dir)
+	if err != nil {
+		log.Fatalf("failed to create sub filesystem for %q: %v", dir, err)
+	}
+	return sub
 }

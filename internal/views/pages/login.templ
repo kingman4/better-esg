@@ -1,0 +1,84 @@
+package pages
+
+import "github.com/kingman4/better-esg/internal/views"
+import "github.com/kingman4/better-esg/internal/views/components"
+
+// LoginPage renders the login form.
+templ LoginPage(data LoginData) {
+	@views.BaseLayout("Login", false, "", "/auth/login", data.Env) {
+		<div class="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+			<div class="max-w-md w-full space-y-8">
+				<div>
+					<h1 class="text-center text-3xl font-bold text-gray-900">FDA ESG NextGen</h1>
+					<h2 class="mt-2 text-center text-lg text-gray-600">Sign in to your account</h2>
+				</div>
+
+				@components.FlashError(data.Error)
+
+				if data.MFARequired {
+					@mfaForm(data)
+				} else {
+					@loginForm(data)
+				}
+			</div>
+		</div>
+	}
+}
+
+templ loginForm(data LoginData) {
+	<form class="mt-8 space-y-6" action="/auth/login" method="POST">
+		<div class="space-y-4">
+			<div>
+				<label for="org_slug" class="block text-sm font-medium text-gray-700">Organization</label>
+				<input id="org_slug" name="org_slug" type="text" required
+					value={ data.OrgSlug }
+					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
+					placeholder="your-org-slug"/>
+			</div>
+			<div>
+				<label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+				<input id="email" name="email" type="email" autocomplete="email" required
+					value={ data.Email }
+					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
+					placeholder="you@example.com"/>
+			</div>
+			<div>
+				<label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+				<input id="password" name="password" type="password" autocomplete="current-password" required
+					class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
+					placeholder="Enter your password"/>
+			</div>
+		</div>
+		<button type="submit"
+			class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+			Sign in
+		</button>
+	</form>
+}
+
+templ mfaForm(data LoginData) {
+	<form class="mt-8 space-y-6" action="/auth/verify-mfa" method="POST">
+		<input type="hidden" name="mfa_token" value={ data.MFAToken }/>
+		if data.MFASetupNeeded {
+			<div class="rounded-md bg-yellow-50 p-4 mb-4">
+				<p class="text-sm text-yellow-700">
+					Your organization requires MFA. Please set up MFA using the API first, then enter your code below.
+				</p>
+			</div>
+		}
+		<div>
+			<label for="totp_code" class="block text-sm font-medium text-gray-700">Authentication Code</label>
+			<input id="totp_code" name="totp_code" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="8" required autofocus
+				class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border text-center text-2xl tracking-widest"
+				placeholder="000000"/>
+			<p class="mt-1 text-sm text-gray-500">Enter the 6-digit code from your authenticator app, or a backup code.</p>
+		</div>
+		<button type="submit"
+			class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+			Verify
+		</button>
+		<div class="text-center">
+			<a href="/auth/login" class="text-sm text-blue-600 hover:text-blue-500">Back to login</a>
+		</div>
+	</form>
+}

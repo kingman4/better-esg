@@ -112,7 +112,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	// 2b. Submit credentials to FDA
 	credResp, err := s.fda.SubmitCredentials(r.Context(), fdaclient.CredentialRequest{
 		UserID:             fdaUserID,
-		FDACenter:          stringOrDefault(sub.FDACenter.String, "CDER"),
+		FDACenter:          sub.FDACenter.String,
 		CompanyID:          fdaCompanyID,
 		SubmissionType:     sub.SubmissionType,
 		SubmissionName:     sub.SubmissionName,
@@ -154,7 +154,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	// 4. Persist FDA fields to DB
 	if err := s.submissions.UpdateFDAFields(r.Context(), id,
 		credResp.CoreID, payloadResp.PayloadID,
-		payloadResp.Links.UploadLink, payloadResp.Links.SubmitLink,
+		payloadResp.UploadFileLink, payloadResp.SubmitFormLink,
 	); err != nil {
 		s.logger.Error("failed to save FDA fields", "submission_id", id, "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save FDA data"})

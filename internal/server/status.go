@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 )
 
 // statusResponse is the JSON response for GET /api/v1/submissions/{id}/status.
@@ -177,18 +178,75 @@ func (s *Server) handleListAcknowledgements(w http.ResponseWriter, r *http.Reque
 }
 
 // mapFDAStatus translates an FDA status string to our local status and workflow state.
+// FDA returns human-readable strings like "Submitted to Center", not enum values.
 func mapFDAStatus(fdaStatus string) (localStatus, workflowState string) {
-	switch fdaStatus {
-	case "RECEIVED":
-		return "submitted", "SUBMITTED"
-	case "PROCESSING":
-		return "submitted", "PROCESSING"
-	case "ACCEPTED":
+	switch strings.ToLower(fdaStatus) {
+	// Upload in progress on FDA side
+	case "upload initiated", "uploading":
+		return "initiated", "UPLOADING_TO_FDA"
+	// Submission received / in transit to center
+	case "submitted to center", "received", "submitted":
+		return "submitted", "SUBMITTED_TO_CENTER"
+	// Being processed by the center
+	case "processing", "under review", "in review":
+		return "processing", "PROCESSING"
+	// Accepted by the center
+	case "accepted", "approved", "completed":
 		return "completed", "ACCEPTED"
-	case "REJECTED":
+	// Rejected by the center
+	case "rejected", "refused":
 		return "failed", "REJECTED"
+	// Error during processing
+	case "error", "failed":
+		return "failed", "FDA_ERROR"
 	default:
-		return "submitted", "UNKNOWN_FDA_STATUS"
+		// Log will capture the actual value so we can add it to the mapping
+		return "submitted", "UNKNOWN_FDA_STATUS:" + fdaStatus
+	}
+}
+
+// WorkflowDisplayLabel returns a user-friendly label for a workflow state.
+func WorkflowDisplayLabel(state string) string {
+	switch state {
+	case "INITIALIZED":
+		return "Initialized"
+	case "CREDENTIALS_PENDING":
+		return "Authenticating with FDA"
+	case "CREDENTIALS_FAILED":
+		return "FDA Authentication Failed"
+	case "PAYLOAD_PENDING":
+		return "Requesting Payload ID"
+	case "PAYLOAD_FAILED":
+		return "Payload Request Failed"
+	case "UPLOAD_PENDING":
+		return "Preparing File Upload"
+	case "FILES_UPLOADING":
+		return "Uploading Files to FDA"
+	case "UPLOAD_FAILED":
+		return "File Upload Failed"
+	case "SUBMIT_PENDING":
+		return "Finalizing Submission"
+	case "SUBMIT_FAILED":
+		return "Submission Failed"
+	case "SUBMITTED":
+		return "Sent to FDA Gateway"
+	case "UPLOADING_TO_FDA":
+		return "FDA Receiving Files"
+	case "SUBMITTED_TO_CENTER":
+		return "Routed to FDA Center"
+	case "PROCESSING":
+		return "Under FDA Review"
+	case "ACCEPTED":
+		return "Accepted by FDA"
+	case "REJECTED":
+		return "Rejected by FDA"
+	case "FDA_ERROR":
+		return "FDA Error"
+	default:
+		if strings.HasPrefix(state, "UNKNOWN_FDA_STATUS:") {
+			return "FDA: " + state[len("UNKNOWN_FDA_STATUS:"):]
+		}
+		return state
 	}
 }
 

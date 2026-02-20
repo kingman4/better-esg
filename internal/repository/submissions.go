@@ -222,6 +222,7 @@ func (r *SubmissionRepo) GetTempCredentials(ctx context.Context, id string) (*Te
 
 // ListByWorkflowStates returns all submissions in the given workflow states that have a core_id.
 // This is an internal query with no org_id filter — used by the background poller.
+// Also includes submissions with UNKNOWN_FDA_STATUS so they continue to be polled.
 func (r *SubmissionRepo) ListByWorkflowStates(ctx context.Context, states []string) ([]Submission, error) {
 	query := `
 		SELECT id, org_id, core_id, fda_center, submission_type, submission_name, submission_protocol,
@@ -229,7 +230,7 @@ func (r *SubmissionRepo) ListByWorkflowStates(ctx context.Context, states []stri
 		       payload_id, upload_file_link, submit_form_link,
 		       created_by, created_at, submitted_at, completed_at, updated_at
 		FROM submissions
-		WHERE workflow_state = ANY($1) AND core_id IS NOT NULL
+		WHERE (workflow_state = ANY($1) OR workflow_state LIKE 'UNKNOWN_FDA_STATUS%') AND core_id IS NOT NULL
 		ORDER BY updated_at ASC`
 
 	rows, err := r.db.QueryContext(ctx, query, pq.Array(states))
@@ -252,6 +253,27 @@ func (r *SubmissionRepo) ListByWorkflowStates(ctx context.Context, states []stri
 		submissions = append(submissions, s)
 	}
 	return submissions, rows.Err()
+}
+
+// CountByWorkflowState returns a map of workflow_state → count for all submissions in an org.
+func (r *SubmissionRepo) CountByWorkflowState(ctx context.Context, orgID string) (map[string]int, error) {
+	query := `SELECT workflow_state, COUNT(*) FROM submissions WHERE org_id = $1 GROUP BY workflow_state`
+	rows, err := r.db.QueryContext(ctx, query, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("counting submissions by workflow state: %w", err)
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var state string
+		var count int
+		if err := rows.Scan(&state, &count); err != nil {
+			return nil, fmt.Errorf("scanning workflow state count: %w", err)
+		}
+		counts[state] = count
+	}
+	return counts, rows.Err()
 }
 
 // UpdateFDAFields updates the FDA-specific fields after credential and payload steps.

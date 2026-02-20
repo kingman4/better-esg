@@ -155,8 +155,11 @@ func TestGetPayload_RetriesOn503(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
-				"payloadId": "PL-123",
-				"links":     map[string]string{"uploadLink": "/upload", "submitLink": "/submit"},
+				"data": map[string]any{
+					"payloadId":      "PL-123",
+					"uploadFileLink": "/upload",
+					"submitFormLink": "/submit",
+				},
 			})
 		default:
 			http.Error(w, "not found", http.StatusNotFound)

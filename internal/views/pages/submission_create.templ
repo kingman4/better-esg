@@ -1,0 +1,135 @@
+package pages
+
+import (
+	"github.com/kingman4/better-esg/internal/views"
+	"github.com/kingman4/better-esg/internal/views/components"
+)
+
+// CreateSubmissionPage renders the create submission form.
+templ CreateSubmissionPage(data CreateSubmissionData) {
+	@views.BaseLayout("New Submission", true, data.UserEmail, "/dashboard/submissions", data.Env) {
+		<div class="max-w-2xl mx-auto space-y-6">
+			<div class="flex items-center space-x-4">
+				<a href="/dashboard/submissions" class="text-gray-400 hover:text-gray-600">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+					</svg>
+				</a>
+				<h1 class="text-2xl font-bold text-gray-900">Create Submission</h1>
+			</div>
+
+			@components.FlashError(data.Error)
+
+			<form method="POST" action="/dashboard/submissions" enctype="multipart/form-data" class="bg-white shadow-sm rounded-lg border border-gray-200 p-6 space-y-5">
+				<div>
+					<label for="name" class="block text-sm font-medium text-gray-700">Submission Name <span class="text-red-500">*</span></label>
+					<input id="name" name="name" type="text" required value={ data.Name }
+						class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
+						placeholder="e.g. Q1 2026 Safety Report"/>
+				</div>
+
+				<div>
+					<label for="submission_type" class="block text-sm font-medium text-gray-700">Submission Type <span class="text-red-500">*</span></label>
+					<select id="submission_type" name="submission_type" required
+						class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
+						<option value="" disabled selected?={ data.Type == "" }>-- Select a type --</option>
+						<option value="NDA" selected?={ data.Type == "NDA" }>NDA — New Drug Application</option>
+						<option value="ANDA" selected?={ data.Type == "ANDA" }>ANDA — Abbreviated New Drug Application (Generic)</option>
+						<option value="IND" selected?={ data.Type == "IND" }>IND — Investigational New Drug</option>
+						<option value="BLA" selected?={ data.Type == "BLA" }>BLA — Biologics License Application</option>
+						<option value="DMF" selected?={ data.Type == "DMF" }>DMF — Drug Master File</option>
+						<option value="510K" selected?={ data.Type == "510K" }>510K — Premarket Notification (Medical Devices)</option>
+						<option value="EUA" selected?={ data.Type == "EUA" }>EUA — Emergency Use Authorization</option>
+					</select>
+				</div>
+
+				<div>
+					<label for="fda_center" class="block text-sm font-medium text-gray-700">FDA Center <span class="text-red-500">*</span></label>
+					<p id="center-hint" class="mt-1 text-xs text-gray-500">Select a submission type first to see valid centers.</p>
+					<select id="fda_center" name="fda_center" required
+						class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
+						<option value="" disabled selected?={ data.FDACenter == "" }>-- Select a center --</option>
+						<option value="CDER" data-types="NDA,ANDA,IND,DMF" selected?={ data.FDACenter == "CDER" }>CDER — Center for Drug Evaluation and Research</option>
+						<option value="CBER" data-types="BLA,510K,EUA" selected?={ data.FDACenter == "CBER" }>CBER — Center for Biologics Evaluation and Research</option>
+					</select>
+				</div>
+				<script>
+				(function() {
+					var typeSelect = document.getElementById('submission_type');
+					var centerSelect = document.getElementById('fda_center');
+					var hint = document.getElementById('center-hint');
+					var centerOptions = centerSelect.querySelectorAll('option[data-types]');
+
+					function filterCenters() {
+						var selectedType = typeSelect.value;
+						var visibleCount = 0;
+						var lastVisible = null;
+
+						// Reset to placeholder if current selection is no longer valid
+						var currentValid = false;
+
+						centerOptions.forEach(function(opt) {
+							var types = opt.getAttribute('data-types').split(',');
+							if (!selectedType || types.indexOf(selectedType) !== -1) {
+								opt.hidden = false;
+								opt.disabled = false;
+								visibleCount++;
+								lastVisible = opt;
+								if (opt.value === centerSelect.value) currentValid = true;
+							} else {
+								opt.hidden = true;
+								opt.disabled = true;
+							}
+						});
+
+						if (!currentValid) {
+							centerSelect.value = '';
+						}
+
+						// Auto-select if only one valid center
+						if (visibleCount === 1 && lastVisible) {
+							centerSelect.value = lastVisible.value;
+						}
+
+						// Update hint text
+						if (!selectedType) {
+							hint.textContent = 'Select a submission type first to see valid centers.';
+						} else {
+							hint.textContent = '';
+						}
+					}
+
+					typeSelect.addEventListener('change', filterCenters);
+					// Run on page load in case type is pre-selected (e.g. validation error re-render)
+					filterCenters();
+				})();
+				</script>
+
+				<div>
+					<label for="description" class="block text-sm font-medium text-gray-700">Description <span class="text-gray-400 text-xs font-normal">(optional)</span></label>
+					<textarea id="description" name="description" rows="3"
+						class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border"
+						placeholder="Brief description of this submission">{ data.Desc }</textarea>
+				</div>
+
+				<div>
+					<label for="files" class="block text-sm font-medium text-gray-700">Files <span class="text-red-500">*</span></label>
+					<p class="mt-1 text-xs text-gray-500">Select one or more files to include in this submission.</p>
+					<input id="files" name="files" type="file" multiple required
+						class="mt-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+				</div>
+
+				<div class="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+					<a href="/dashboard/submissions"
+						class="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
+						Cancel
+					</a>
+					<button type="submit"
+						class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+						Create Submission
+					</button>
+				</div>
+			</form>
+		</div>
+	}
+}

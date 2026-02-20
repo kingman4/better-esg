@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/kingman4/better-esg/internal/auth"
 	"github.com/kingman4/better-esg/internal/database"
 	"github.com/kingman4/better-esg/internal/fdaclient"
 	"github.com/kingman4/better-esg/internal/repository"
@@ -39,6 +41,7 @@ type Server struct {
 	notificationPrefs *repository.NotificationPreferenceRepo
 	templates         *repository.SubmissionTemplateRepo
 	storage           storage.Store
+	staticFS          fs.FS
 	logger            *slog.Logger
 	fda           *fdaclient.Client
 	fdaUserEmail  string // for auto-resolving user_id + company_id via GetCompanyInfo
@@ -47,6 +50,9 @@ type Server struct {
 	// MFA temp secrets: holds unconfirmed TOTP secrets between setup and confirm calls.
 	// Key: userID (string), Value: tempMFASecret.
 	mfaTempSecrets sync.Map
+
+	// "prod" or "test" — shown in the web UI so users know which FDA environment they target.
+	fdaEnvironment string
 
 	// When true, API key auth is skipped and a default org/user is used.
 	authDisabled  bool
@@ -76,6 +82,7 @@ type Config struct {
 	S3Endpoint         string        // custom endpoint for S3-compatible services
 	JWTSecret          string        // HS256 signing key for JWT tokens (min 32 chars)
 	AuthDisabled       bool          // when true, skip API key auth and use a default org/user
+	StaticFS           fs.FS         // embedded static assets for web UI (nil = web UI disabled)
 }
 
 // New creates a new Server, runs migrations, and sets up routes.
@@ -164,8 +171,10 @@ func New(cfg Config) (*Server, error) {
 			ClientSecret:    cfg.FDAClientSecret,
 			Environment:     fdaEnv,
 		}),
-		fdaUserEmail: cfg.FDAUserEmail,
-		storage:      store,
+		fdaUserEmail:   cfg.FDAUserEmail,
+		fdaEnvironment: cfg.FDAEnvironment,
+		storage:        store,
+		staticFS:     cfg.StaticFS,
 		jwtSecret:    cfg.JWTSecret,
 		logger:       logger,
 	}
@@ -269,6 +278,33 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /api/v1/orgs/{id}", s.withAuth(s.adminOnly(s.handleGetOrg)))
 	s.router.HandleFunc("PATCH /api/v1/orgs/{id}", s.withAuth(s.adminOnly(s.handleUpdateOrg)))
 	s.router.HandleFunc("DELETE /api/v1/orgs/{id}", s.withAuth(s.adminOnly(s.handleDeleteOrg)))
+
+	// --- Web UI routes (HTML, cookie auth) ---
+
+	// Static assets
+	if s.staticFS != nil {
+		s.router.Handle("GET /static/", staticFileServer(s.staticFS))
+	}
+
+	// Root redirect
+	s.router.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/dashboard", http.StatusFound)
+	})
+
+	// Auth pages (public — withCookieAuth allows redirect-if-already-logged-in)
+	s.router.HandleFunc("GET /auth/login", s.withCookieAuth(s.handleLoginPage))
+	s.router.HandleFunc("POST /auth/login", s.handleWebLogin)
+	s.router.HandleFunc("POST /auth/verify-mfa", s.handleWebVerifyMFA)
+	s.router.HandleFunc("POST /auth/logout", s.handleWebLogout)
+
+	// Dashboard (requires auth)
+	s.router.HandleFunc("GET /dashboard", s.requireWebAuth(s.handleDashboard))
+	s.router.HandleFunc("GET /dashboard/submissions", s.requireWebAuth(s.handleSubmissionsList))
+	s.router.HandleFunc("GET /dashboard/submissions/new", s.requireWebAuth(s.handleCreateSubmissionPage))
+	s.router.HandleFunc("POST /dashboard/submissions", s.requireWebAuth(s.handleWebCreateSubmission))
+	s.router.HandleFunc("GET /dashboard/submissions/{id}", s.requireWebAuth(s.handleSubmissionDetail))
+	s.router.HandleFunc("GET /dashboard/submissions/{id}/status", s.requireWebAuth(s.handleSubmissionStatus))
+	s.router.HandleFunc("POST /dashboard/submissions/{id}/retry", s.requireWebAuth(s.handleRetrySubmission))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -298,15 +334,22 @@ func (s *Server) initDefaultOrgUser() error {
 		return fmt.Errorf("creating default organization: %w", err)
 	}
 
+	// Hash a default password for the web UI login
+	passwordHash, err := auth.HashPassword("admin")
+	if err != nil {
+		return fmt.Errorf("hashing default password: %w", err)
+	}
+
 	err = s.db.QueryRowContext(ctx,
-		`INSERT INTO users (org_id, email, role) VALUES ($1, 'admin@localhost', 'admin')
-		 ON CONFLICT (org_id, email) DO UPDATE SET role = EXCLUDED.role
-		 RETURNING id`, s.defaultOrgID).Scan(&s.defaultUserID)
+		`INSERT INTO users (org_id, email, role, password_hash) VALUES ($1, 'admin@localhost', 'admin', $2)
+		 ON CONFLICT (org_id, email) DO UPDATE SET role = EXCLUDED.role, password_hash = EXCLUDED.password_hash
+		 RETURNING id`, s.defaultOrgID, passwordHash).Scan(&s.defaultUserID)
 	if err != nil {
 		return fmt.Errorf("creating default user: %w", err)
 	}
 
 	s.authDisabled = true
+	s.logger.Info("default web login: email=admin@localhost password=admin org_slug=default")
 	return nil
 }
 

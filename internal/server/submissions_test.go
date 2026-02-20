@@ -547,10 +547,10 @@ func newMockFDAServer(t *testing.T) *httptest.Server {
 			payloadID := fmt.Sprintf("PL-WORKFLOW-%d", n)
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
-				"payloadId": payloadID,
-				"links": map[string]string{
-					"uploadLink": fmt.Sprintf("/rest/forms/v1/fileupload/payload/%s/file", payloadID),
-					"submitLink": fmt.Sprintf("/rest/forms/v1/fileupload/payload/%s/submit", payloadID),
+				"data": map[string]any{
+					"payloadId":      payloadID,
+					"uploadFileLink": fmt.Sprintf("/rest/forms/v1/fileupload/payload/%s/file", payloadID),
+					"submitFormLink": fmt.Sprintf("/rest/forms/v1/fileupload/payload/%s/submit", payloadID),
 				},
 			})
 

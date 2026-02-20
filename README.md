@@ -67,7 +67,7 @@ All configuration is via environment variables. Copy `.env.example` and fill in 
 | `DB_PASSWORD` | `esg` | Database password |
 | `DB_NAME` | `esg` | Database name |
 | `DB_SSLMODE` | `disable` | SSL mode |
-| `STATUS_POLL_INTERVAL` | `60s` | How often to poll FDA for in-flight submission updates (0 = disabled) |
+| `STATUS_POLL_INTERVAL` | `30m` | How often to poll FDA for in-flight submission updates (e.g. `5m`, `1h`; 0 = disabled) |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `STORAGE_BACKEND` | `local` | Storage backend: `local` (filesystem) or `s3` (Amazon S3 / compatible) |
 | `STORAGE_PATH` | `./data/uploads` | Base directory for uploaded files (used when `STORAGE_BACKEND=local`) |
@@ -209,6 +209,25 @@ All endpoints except `/health` and `/api/v1/auth/*` require an `Authorization: B
 | `GET` | `/api/v1/submission-templates/{id}` | Get a submission template |
 | `PATCH` | `/api/v1/submission-templates/{id}` | Update a submission template |
 | `DELETE` | `/api/v1/submission-templates/{id}` | Soft-delete a submission template (admin only) |
+
+## Web UI
+
+The platform includes a browser-based UI built with templ (type-safe Go templates) + HTMX + Tailwind CSS. It's embedded in the single binary — no separate frontend build or deployment needed.
+
+| Route | Description |
+|---|---|
+| `/auth/login` | Login page (email, password, org slug) with MFA support |
+| `/dashboard` | Overview with submission counts by state + recent submissions |
+
+The web UI uses httpOnly cookie-based auth (separate from the Bearer token API). All existing JSON API endpoints remain fully functional alongside the web routes.
+
+To develop with templ, install the CLI and regenerate after editing `.templ` files:
+
+```bash
+go install github.com/a-h/templ/cmd/templ@latest
+make templ-generate   # or: templ generate
+make build
+```
 
 ## Submission Workflow
 

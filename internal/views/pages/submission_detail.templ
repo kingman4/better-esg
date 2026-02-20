@@ -1,0 +1,239 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/kingman4/better-esg/internal/views"
+)
+
+// SubmissionDetailPage renders a single submission's details.
+templ SubmissionDetailPage(data SubmissionDetailData) {
+	@views.BaseLayout(data.Name, true, data.UserEmail, "/dashboard/submissions", data.Env) {
+		<div class="space-y-6">
+			<div class="flex items-center space-x-4">
+				<a href="/dashboard/submissions" class="text-gray-400 hover:text-gray-600">
+					<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+					</svg>
+				</a>
+				<h1 class="text-2xl font-bold text-gray-900">{ data.Name }</h1>
+			</div>
+
+			// Status section — polled via HTMX when workflow is in progress
+			@SubmissionStatusFragment(data)
+
+			// Activity log — outside the HTMX-polled section so <details> open state is preserved
+			@SubmissionActivityLog(data)
+
+			<div class="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
+				<div class="px-6 py-5 border-b border-gray-200">
+					<h2 class="text-lg font-medium text-gray-900">Submission Details</h2>
+				</div>
+				<dl class="divide-y divide-gray-200">
+					@detailRow("ID", data.ID)
+					@detailRow("Submission Type", data.Type)
+					@detailRow("Protocol", data.Protocol)
+					if data.FDACenter != "" {
+						@detailRow("FDA Center", data.FDACenter)
+					}
+					if data.Description != "" {
+						@detailRow("Description", data.Description)
+					}
+					@detailRow("File Count", fmt.Sprintf("%d", data.FileCount))
+					@detailRow("Created By", data.CreatedBy)
+					@detailRow("Created At", data.CreatedAt)
+					if data.SubmittedAt != "" {
+						@detailRow("Submitted At", data.SubmittedAt)
+					}
+					if data.CompletedAt != "" {
+						@detailRow("Completed At", data.CompletedAt)
+					}
+				</dl>
+			</div>
+		</div>
+	}
+}
+
+// SubmissionStatusFragment renders the live-updating status section.
+// Returned by the HTMX polling endpoint and embedded in the full page.
+templ SubmissionStatusFragment(data SubmissionDetailData) {
+	<div
+		id="status-section"
+		if !data.IsTerminal() {
+			hx-get={ fmt.Sprintf("/dashboard/submissions/%s/status", data.ID) }
+			hx-trigger="every 2s"
+			hx-swap="outerHTML"
+		}
+	>
+		// Error banner + retry button
+		if data.ErrorMessage != "" {
+			<div class="rounded-md bg-red-50 border border-red-200 p-4">
+				<div class="flex items-start justify-between">
+					<div class="flex">
+						<div class="flex-shrink-0">
+							<svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+								<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+							</svg>
+						</div>
+						<div class="ml-3">
+							<h3 class="text-sm font-medium text-red-800">Workflow Error</h3>
+							<p class="mt-1 text-sm text-red-700">{ data.ErrorMessage }</p>
+						</div>
+					</div>
+					if isFailedWorkflow(data.WorkflowState) {
+						<form method="POST" action={ templ.SafeURL(fmt.Sprintf("/dashboard/submissions/%s/retry", data.ID)) }>
+							<button type="submit" class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+								<svg class="h-4 w-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+								</svg>
+								Retry
+							</button>
+						</form>
+					}
+				</div>
+			</div>
+		}
+
+		// Current status + workflow progress
+		<div class="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
+			<div class="px-6 py-5 border-b border-gray-200">
+				<div class="flex items-center justify-between">
+					<h2 class="text-lg font-medium text-gray-900">Submission Progress</h2>
+					<div class="flex items-center space-x-2">
+						@statusBadge(data.WorkflowState)
+						if !data.IsTerminal() {
+							<svg class="animate-spin h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+							</svg>
+						}
+					</div>
+				</div>
+			</div>
+
+			// Workflow progress stepper
+			<div class="px-6 py-5">
+				<nav>
+					<ol class="flex items-center w-full">
+						for i, step := range WorkflowProgress(data.WorkflowState) {
+							<li class={ progressStepContainerClass(i, len(WorkflowProgress(data.WorkflowState))) }>
+								<div class="flex flex-col items-center">
+									// Step circle — completed and current both show green check (success),
+								// current additionally has a ring to show "you are here"
+									if step.Status == "completed" {
+										<span class="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 shrink-0">
+											<svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+												<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+											</svg>
+										</span>
+									} else if step.Status == "current" {
+										<span class="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 ring-2 ring-green-500 shrink-0">
+											<svg class="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+												<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+											</svg>
+										</span>
+									} else if step.Status == "failed" {
+										<span class="flex items-center justify-center w-8 h-8 rounded-full bg-red-100 ring-2 ring-red-400 shrink-0">
+											<svg class="w-4 h-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+												<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+											</svg>
+										</span>
+									} else {
+										<span class="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 shrink-0">
+											<span class="w-2.5 h-2.5 rounded-full bg-gray-300"></span>
+										</span>
+									}
+									// Step label
+									<span class={ progressLabelClass(step.Status) }>{ step.Label }</span>
+								</div>
+								// Connector line between steps
+								if i < len(WorkflowProgress(data.WorkflowState)) - 1 {
+									<div class={ progressLineClass(step.Status) }></div>
+								}
+							</li>
+						}
+					</ol>
+				</nav>
+				// Current status description
+				<div class="mt-4 text-center">
+					if !data.IsTerminal() {
+						<p class="text-sm text-gray-600">
+							<span class="font-medium text-green-700">{ data.DisplayLabel() }</span>
+							<span class="text-gray-400 mx-1">—</span>
+							<span class="text-gray-500">{ workflowStatusHint(data.WorkflowState) }</span>
+						</p>
+					} else if data.WorkflowState == "ACCEPTED" || data.WorkflowState == "COMPLETED" {
+						<p class="text-sm font-medium text-green-700">Submission accepted by FDA</p>
+					} else if data.WorkflowState == "REJECTED" {
+						<p class="text-sm font-medium text-red-600">Submission rejected by FDA</p>
+					} else {
+						<p class="text-sm font-medium text-red-600">{ data.DisplayLabel() }</p>
+					}
+				</div>
+			</div>
+
+		</div>
+	</div>
+}
+
+// SubmissionActivityLog renders the collapsible activity log.
+// Separated from the HTMX-polled status section so the <details> open state is preserved.
+templ SubmissionActivityLog(data SubmissionDetailData) {
+	if len(data.WorkflowLog) > 0 {
+		<div class="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
+			<details class="group">
+				<summary class="px-6 py-4 cursor-pointer text-sm font-medium text-gray-500 hover:text-gray-700 flex items-center justify-between">
+					<span>Activity Log ({ fmt.Sprintf("%d", len(data.WorkflowLog)) } events)</span>
+					<svg class="h-4 w-4 text-gray-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+					</svg>
+				</summary>
+				<div class="px-6 pb-5 border-t border-gray-200">
+					<div class="flow-root pt-4">
+						<ul class="-mb-8">
+							for i, step := range data.WorkflowLog {
+								<li>
+									<div class="relative pb-8">
+										if i < len(data.WorkflowLog) - 1 {
+											<span class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-gray-200"></span>
+										}
+										<div class="relative flex space-x-3">
+											if step.Error != "" {
+												<div class="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center ring-8 ring-white">
+													<svg class="h-4 w-4 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+														<path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+													</svg>
+												</div>
+											} else {
+												<div class="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center ring-8 ring-white">
+													<svg class="h-4 w-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+														<path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
+													</svg>
+												</div>
+											}
+											<div class="min-w-0 flex-1">
+												<p class="text-sm font-medium text-gray-900">
+													{ workflowDisplayLabel(step.ToState) }
+												</p>
+												if step.Error != "" {
+													<p class="text-xs text-red-600 mt-0.5">{ step.Error }</p>
+												}
+												<p class="text-xs text-gray-500">{ step.CreatedAt }</p>
+											</div>
+										</div>
+									</div>
+								</li>
+							}
+						</ul>
+					</div>
+				</div>
+			</details>
+		</div>
+	}
+}
+
+templ detailRow(label, value string) {
+	<div class="px-6 py-4 sm:grid sm:grid-cols-3 sm:gap-4">
+		<dt class="text-sm font-medium text-gray-500">{ label }</dt>
+		<dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{ value }</dd>
+	</div>
+}

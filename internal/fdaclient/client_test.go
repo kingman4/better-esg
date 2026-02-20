@@ -91,8 +91,8 @@ func newCredentialServer(t *testing.T) *httptest.Server {
 			r.Method == http.MethodPost:
 
 			// Verify Bearer token
-			auth := r.Header.Get("Authorization")
-			if !strings.HasPrefix(auth, "Bearer ") {
+			auth := r.Header.Get("accesstoken")
+			if auth == "" {
 				w.WriteHeader(http.StatusUnauthorized)
 				json.NewEncoder(w).Encode(errorResponse{
 					ESGNGCode:        "ESGNG401",
@@ -373,7 +373,7 @@ func TestSubmitCredentials_UsesCorrectEnvironmentPath(t *testing.T) {
 	}
 }
 
-func TestSubmitCredentials_SendsBearerToken(t *testing.T) {
+func TestSubmitCredentials_SendsAccessToken(t *testing.T) {
 	var receivedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/as/token.oauth2" {
@@ -383,7 +383,7 @@ func TestSubmitCredentials_SendsBearerToken(t *testing.T) {
 			})
 			return
 		}
-		receivedAuth = r.Header.Get("Authorization")
+		receivedAuth = r.Header.Get("accesstoken")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"core_id": "CORE-1", "temp_user": "u", "temp_password": "p",
@@ -406,8 +406,8 @@ func TestSubmitCredentials_SendsBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if receivedAuth != "Bearer my-bearer-token" {
-		t.Errorf("expected 'Bearer my-bearer-token', got %q", receivedAuth)
+	if receivedAuth != "my-bearer-token" {
+		t.Errorf("expected 'my-bearer-token', got %q", receivedAuth)
 	}
 }
 
@@ -550,10 +550,10 @@ func TestGetPayload_Success(t *testing.T) {
 		// No auth required for this endpoint
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"payloadId": "PL-98765",
-			"links": map[string]string{
-				"uploadLink": "/rest/forms/v1/fileupload/payload/PL-98765/file",
-				"submitLink": "/rest/forms/v1/fileupload/payload/PL-98765/submit",
+			"data": map[string]any{
+				"payloadId":      "PL-98765",
+				"uploadFileLink": "/rest/forms/v1/fileupload/payload/PL-98765/file",
+				"submitFormLink": "/rest/forms/v1/fileupload/payload/PL-98765/submit",
 			},
 		})
 	}))
@@ -572,22 +572,25 @@ func TestGetPayload_Success(t *testing.T) {
 	if resp.PayloadID != "PL-98765" {
 		t.Errorf("expected payloadId 'PL-98765', got %q", resp.PayloadID)
 	}
-	if resp.Links.UploadLink != "/rest/forms/v1/fileupload/payload/PL-98765/file" {
-		t.Errorf("unexpected uploadLink: %q", resp.Links.UploadLink)
+	if resp.UploadFileLink != "/rest/forms/v1/fileupload/payload/PL-98765/file" {
+		t.Errorf("unexpected uploadFileLink: %q", resp.UploadFileLink)
 	}
-	if resp.Links.SubmitLink != "/rest/forms/v1/fileupload/payload/PL-98765/submit" {
-		t.Errorf("unexpected submitLink: %q", resp.Links.SubmitLink)
+	if resp.SubmitFormLink != "/rest/forms/v1/fileupload/payload/PL-98765/submit" {
+		t.Errorf("unexpected submitFormLink: %q", resp.SubmitFormLink)
 	}
 }
 
 func TestGetPayload_NoAuth(t *testing.T) {
 	var receivedAuth string
 	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAuth = r.Header.Get("Authorization")
+		receivedAuth = r.Header.Get("accesstoken")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"payloadId": "PL-1",
-			"links":     map[string]string{"uploadLink": "/u", "submitLink": "/s"},
+			"data": map[string]any{
+				"payloadId":      "PL-1",
+				"uploadFileLink": "/u",
+				"submitFormLink": "/s",
+			},
 		})
 	}))
 	defer uploadServer.Close()
@@ -602,7 +605,7 @@ func TestGetPayload_NoAuth(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if receivedAuth != "" {
-		t.Errorf("GetPayload should not send Authorization header, got %q", receivedAuth)
+		t.Errorf("GetPayload should not send accesstoken header, got %q", receivedAuth)
 	}
 }
 
@@ -644,8 +647,8 @@ func TestUploadFile_Success(t *testing.T) {
 
 		case r.URL.Path == "/rest/forms/v1/fileupload/payload/PL-123/file" && r.Method == http.MethodPost:
 			// Verify Bearer token
-			auth := r.Header.Get("Authorization")
-			if auth != "Bearer upload-token" {
+			auth := r.Header.Get("accesstoken")
+			if auth != "upload-token" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
@@ -945,7 +948,7 @@ func TestSubmitPayload_Success(t *testing.T) {
 func TestSubmitPayload_NoAuthHeader(t *testing.T) {
 	var receivedAuth string
 	uploadServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAuth = r.Header.Get("Authorization")
+		receivedAuth = r.Header.Get("accesstoken")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"core_id": "CORE-1", "esgngcode": "ESGNG230", "esgngdescription": "ok",
@@ -965,7 +968,7 @@ func TestSubmitPayload_NoAuthHeader(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if receivedAuth != "" {
-		t.Errorf("SubmitPayload should not send Authorization header, got %q", receivedAuth)
+		t.Errorf("SubmitPayload should not send accesstoken header, got %q", receivedAuth)
 	}
 }
 
@@ -1073,8 +1076,8 @@ func newStatusServer(t *testing.T) *httptest.Server {
 			})
 
 		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
-			auth := r.Header.Get("Authorization")
-			if auth != "Bearer status-token" {
+			auth := r.Header.Get("accesstoken")
+			if auth != "status-token" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
@@ -1092,8 +1095,8 @@ func newStatusServer(t *testing.T) *httptest.Server {
 			})
 
 		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/acknowledgements/") && r.Method == http.MethodGet:
-			auth := r.Header.Get("Authorization")
-			if auth != "Bearer status-token" {
+			auth := r.Header.Get("accesstoken")
+			if auth != "status-token" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
@@ -1147,7 +1150,7 @@ func TestGetSubmissionStatus_Success(t *testing.T) {
 	}
 }
 
-func TestGetSubmissionStatus_SendsBearerToken(t *testing.T) {
+func TestGetSubmissionStatus_SendsAccessToken(t *testing.T) {
 	var receivedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/as/token.oauth2" {
@@ -1157,7 +1160,7 @@ func TestGetSubmissionStatus_SendsBearerToken(t *testing.T) {
 			})
 			return
 		}
-		receivedAuth = r.Header.Get("Authorization")
+		receivedAuth = r.Header.Get("accesstoken")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"core_id": "C1", "status": "PENDING", "esgngcode": "ESGNG200",
@@ -1177,8 +1180,8 @@ func TestGetSubmissionStatus_SendsBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if receivedAuth != "Bearer my-tok" {
-		t.Errorf("expected 'Bearer my-tok', got %q", receivedAuth)
+	if receivedAuth != "my-tok" {
+		t.Errorf("expected 'my-tok', got %q", receivedAuth)
 	}
 }
 
@@ -1269,7 +1272,7 @@ func TestGetAcknowledgement_Success(t *testing.T) {
 	}
 }
 
-func TestGetAcknowledgement_SendsBearerToken(t *testing.T) {
+func TestGetAcknowledgement_SendsAccessToken(t *testing.T) {
 	var receivedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/as/token.oauth2" {
@@ -1279,7 +1282,7 @@ func TestGetAcknowledgement_SendsBearerToken(t *testing.T) {
 			})
 			return
 		}
-		receivedAuth = r.Header.Get("Authorization")
+		receivedAuth = r.Header.Get("accesstoken")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"acknowledgement_id": "A1", "type": "ACK1", "raw_message": "",
@@ -1299,8 +1302,8 @@ func TestGetAcknowledgement_SendsBearerToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if receivedAuth != "Bearer ack-tok" {
-		t.Errorf("expected 'Bearer ack-tok', got %q", receivedAuth)
+	if receivedAuth != "ack-tok" {
+		t.Errorf("expected 'ack-tok', got %q", receivedAuth)
 	}
 }
 
@@ -1352,8 +1355,8 @@ func newCompanyInfoServer(t *testing.T, statusCode int, responseBody string) *ht
 			})
 
 		case r.URL.Path == "/api/esgng/v1/companies" && r.Method == http.MethodGet:
-			auth := r.Header.Get("Authorization")
-			if auth != "Bearer company-token" {
+			auth := r.Header.Get("accesstoken")
+			if auth != "company-token" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
@@ -1504,7 +1507,7 @@ func TestGetCompanyInfo_APIError(t *testing.T) {
 	}
 }
 
-func TestGetCompanyInfo_SendsBearerAndAccept(t *testing.T) {
+func TestGetCompanyInfo_SendsAccessTokenAndAccept(t *testing.T) {
 	var receivedAuth, receivedAccept, receivedEmail string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/as/token.oauth2" {
@@ -1514,7 +1517,7 @@ func TestGetCompanyInfo_SendsBearerAndAccept(t *testing.T) {
 			})
 			return
 		}
-		receivedAuth = r.Header.Get("Authorization")
+		receivedAuth = r.Header.Get("accesstoken")
 		receivedAccept = r.Header.Get("Accept")
 		receivedEmail = r.URL.Query().Get("user_email")
 		w.Header().Set("Content-Type", "application/json")
@@ -1536,8 +1539,8 @@ func TestGetCompanyInfo_SendsBearerAndAccept(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if receivedAuth != "Bearer ci-token" {
-		t.Errorf("expected 'Bearer ci-token', got %q", receivedAuth)
+	if receivedAuth != "ci-token" {
+		t.Errorf("expected 'ci-token', got %q", receivedAuth)
 	}
 	if receivedAccept != "application/json" {
 		t.Errorf("expected Accept 'application/json', got %q", receivedAccept)

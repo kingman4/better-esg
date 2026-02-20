@@ -1,0 +1,52 @@
+package pages
+
+import "github.com/kingman4/better-esg/internal/views"
+
+// SubmissionsPage renders the full submissions list.
+templ SubmissionsPage(data SubmissionsData) {
+	@views.BaseLayout("Submissions", true, data.UserEmail, "/dashboard/submissions", data.Env) {
+		<div class="space-y-6">
+			<div class="flex items-center justify-between">
+				<h1 class="text-2xl font-bold text-gray-900">Submissions</h1>
+				<a href="/dashboard/submissions/new"
+					class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+					Create Submission
+				</a>
+			</div>
+
+			if len(data.Submissions) == 0 {
+				<div class="text-center py-12 bg-white rounded-lg border border-gray-200">
+					<p class="text-gray-500">No submissions yet.</p>
+					<a href="/dashboard/submissions/new" class="mt-2 inline-block text-sm text-blue-600 hover:text-blue-500">Create your first submission</a>
+				</div>
+			} else {
+				<div class="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
+					<table class="min-w-full divide-y divide-gray-200">
+						<thead class="bg-gray-50">
+							<tr>
+								<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+								<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+								<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+								<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+							</tr>
+						</thead>
+						<tbody class="bg-white divide-y divide-gray-200">
+							for _, sub := range data.Submissions {
+								<tr class="hover:bg-gray-50">
+									<td class="px-6 py-4 whitespace-nowrap">
+										<a href={ templ.SafeURL("/dashboard/submissions/" + sub.ID) } class="text-sm font-medium text-blue-600 hover:text-blue-500">{ sub.Name }</a>
+									</td>
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{ sub.Type }</td>
+									<td class="px-6 py-4 whitespace-nowrap">
+										@statusBadge(sub.WorkflowState)
+									</td>
+									<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{ sub.CreatedAt }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
