@@ -1,4 +1,4 @@
-.PHONY: build build-cli run tidy test test-integration up down clean clean-test templ-generate
+.PHONY: build build-cli run tidy test test-integration test-coverage up down clean clean-test templ-generate
 
 # Detect host OS/arch for cross-compiling the CLI inside Docker
 CLI_OS ?= $(shell uname -s | tr A-Z a-z)
@@ -60,6 +60,12 @@ down:
 # Stop and remove volumes
 clean:
 	docker compose down -v
+
+# Run unit tests with coverage report (opens in browser)
+test-coverage:
+	docker build -f Dockerfile.test -t better-esg-test .
+	docker run --rm better-esg-test sh -c \
+		"go test -coverprofile=/tmp/cover.out ./... && go tool cover -func=/tmp/cover.out"
 
 # Remove cached test image to free disk space
 clean-test:

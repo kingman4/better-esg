@@ -219,6 +219,11 @@ The platform includes a browser-based UI built with templ (type-safe Go template
 |---|---|
 | `/auth/login` | Login page (email, password, org slug) with MFA support |
 | `/dashboard` | Overview with submission counts by state + recent submissions |
+| `/dashboard/submissions` | Paginated submission list |
+| `/dashboard/submissions/new` | New submission form with dynamic center filtering by type |
+| `/dashboard/submissions/{id}` | Submission detail with 7-step progress stepper and activity log |
+
+The submission detail page features a live-updating progress stepper (HTMX polling every 2s) that tracks the full FDA workflow from authentication through final decision. Completed steps show green checks, the current step is highlighted, and failed steps show a red indicator.
 
 The web UI uses httpOnly cookie-based auth (separate from the Bearer token API). All existing JSON API endpoints remain fully functional alongside the web routes.
 
@@ -249,12 +254,20 @@ Each state transition is logged to `workflow_state_log` for audit purposes.
 ## Testing
 
 ```bash
-# Unit tests only (no Docker required)
+# Unit tests via Docker (no local Go required, layer-cached for fast reruns)
+make test-docker
+
+# All tests including integration via Docker (starts a disposable Postgres container)
+make test-integration
+
+# Unit tests locally (requires Go 1.24+ and templ)
 make test
 
-# All tests including integration (starts a disposable Postgres container)
-make test-integration
+# Clean up cached test image to free disk (~400-500MB)
+make clean-test
 ```
+
+`test-docker` and `test-integration` use a `Dockerfile.test` with layer caching — Go modules and templ are cached between runs, so only source changes trigger a rebuild.
 
 Integration tests use `testcontainers-go` for disposable PostgreSQL containers and `httptest` for mock FDA servers. FDA endpoints are never hit in CI.
 
@@ -277,3 +290,5 @@ Both produce static binaries with no external dependencies. `make build-cli` cro
 **Streaming uploads** via `io.ReadSeeker` + `io.MultiReader` — file content is never fully buffered in memory, enabling large file submissions.
 
 **Background status poller** checks FDA for in-flight submissions on a configurable interval and stores acknowledgements locally with deduplication.
+
+**Bounded webhook concurrency** limits parallel webhook deliveries to 10 via a semaphore, preventing goroutine explosion under load. All in-flight deliveries are tracked with a WaitGroup for graceful shutdown — the server waits up to 15 seconds for pending deliveries to complete before closing.
