@@ -1,6 +1,6 @@
 # FDA ESG NextGen Submission Platform
 
-An open-source Go server and CLI for submitting electronic regulatory documents to the FDA via the ESG NextGen API. Handles the full submission lifecycle: credential exchange, file upload, finalization, status polling, and acknowledgement retrieval.
+An open-source Go server, CLI, and web UI for submitting electronic regulatory documents to the FDA via the ESG NextGen API. Handles the full submission lifecycle: credential exchange, file upload, finalization, status polling, and acknowledgement retrieval.
 
 Licensed under Apache 2.0.
 
