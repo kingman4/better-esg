@@ -28,7 +28,10 @@ func (s *Server) notifyEvent(orgID string, event WebhookEvent) {
 		return
 	}
 
+	s.webhookWG.Add(1)
 	go func() {
+		defer s.webhookWG.Done()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 

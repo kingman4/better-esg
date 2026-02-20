@@ -363,7 +363,7 @@ func TestPollAllSubmissions_StateTransitions(t *testing.T) {
 	srv.pollAllSubmissions(ctx)
 	sub, err := srv.submissions.GetByID(ctx, orgID, subID)
 	require.NoError(t, err)
-	assert.Equal(t, "submitted", sub.Status)
+	assert.Equal(t, "processing", sub.Status)
 	assert.Equal(t, "PROCESSING", sub.WorkflowState)
 
 	// Second poll: PROCESSING → ACCEPTED

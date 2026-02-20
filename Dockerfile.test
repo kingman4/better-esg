@@ -1,0 +1,20 @@
+FROM golang:1.24-alpine
+
+RUN apk add --no-cache git
+
+WORKDIR /app
+
+# Layer 1: cache Go module downloads (only re-runs when go.mod/go.sum change)
+COPY go.mod go.sum* ./
+RUN go mod download
+
+# Layer 2: cache templ CLI binary
+RUN go install github.com/a-h/templ/cmd/templ@v0.3.977
+
+# Layer 3: copy source
+COPY . .
+
+# Generate templ + tidy (picks up any new templ deps)
+RUN templ generate && go mod tidy
+
+CMD ["go", "test", "./..."]

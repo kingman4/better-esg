@@ -626,9 +626,13 @@ func envOrDefault(key, fallback string) string {
 	return fallback
 }
 
+// exitFunc is the function called to terminate the process. Tests override this
+// to capture fatal errors instead of killing the test runner.
+var exitFunc = os.Exit
+
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "error: "+format+"\n", args...)
-	os.Exit(1)
+	exitFunc(1)
 }
 
 func progress(format string, args ...any) {

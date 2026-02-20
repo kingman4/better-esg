@@ -69,6 +69,7 @@ All configuration is via environment variables. Copy `.env.example` and fill in 
 | `DB_SSLMODE` | `disable` | SSL mode |
 | `STATUS_POLL_INTERVAL` | `30m` | How often to poll FDA for in-flight submission updates (e.g. `5m`, `1h`; 0 = disabled) |
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `FDA_DEBUG` | `false` | When `true`, log raw FDA API request/response bodies for troubleshooting |
 | `STORAGE_BACKEND` | `local` | Storage backend: `local` (filesystem) or `s3` (Amazon S3 / compatible) |
 | `STORAGE_PATH` | `./data/uploads` | Base directory for uploaded files (used when `STORAGE_BACKEND=local`) |
 | `S3_BUCKET` | | S3 bucket name (required when `STORAGE_BACKEND=s3`) |

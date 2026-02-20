@@ -1,4 +1,4 @@
-.PHONY: build build-cli run tidy test test-integration up down clean templ-generate
+.PHONY: build build-cli run tidy test test-integration up down clean clean-test templ-generate
 
 # Detect host OS/arch for cross-compiling the CLI inside Docker
 CLI_OS ?= $(shell uname -s | tr A-Z a-z)
@@ -31,14 +31,19 @@ test: templ-generate
 	go test ./...
 
 # Run unit tests via Docker (no local Go required)
+# Uses Dockerfile.test for layer caching — only re-downloads deps when go.mod changes.
 test-docker:
-	docker run --rm -v "$(PWD)":/app -w /app golang:1.24-alpine sh -c \
-		"apk add --no-cache git && go run github.com/a-h/templ/cmd/templ@v0.3.977 generate && go get github.com/a-h/templ@v0.3.977 && go mod tidy && go test ./..."
+	docker build -f Dockerfile.test -t better-esg-test .
+	docker run --rm better-esg-test
 
-# Resolve deps and run all tests including integration (requires Docker)
-# TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE fixes Colima socket mounting
-test-integration: tidy
-	TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock go test -tags=integration ./...
+# Run all tests including integration via Docker (no local Go required)
+# Reuses the cached test image; mounts Docker socket for testcontainers.
+test-integration:
+	docker build -f Dockerfile.test -t better-esg-test .
+	docker run --rm \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-e TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock \
+		better-esg-test go test -tags=integration ./...
 
 # Start all services (web app + database)
 up:
@@ -55,3 +60,7 @@ down:
 # Stop and remove volumes
 clean:
 	docker compose down -v
+
+# Remove cached test image to free disk space
+clean-test:
+	docker rmi better-esg-test 2>/dev/null || true

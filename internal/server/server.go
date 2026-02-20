@@ -60,6 +60,11 @@ type Server struct {
 	defaultUserID string
 
 	pollerCancel context.CancelFunc
+
+	// webhookWG tracks in-flight webhook deliveries for graceful shutdown.
+	webhookWG sync.WaitGroup
+	// webhookSem limits concurrent webhook deliveries to prevent goroutine explosion.
+	webhookSem chan struct{}
 }
 
 // Config holds the parameters needed to create a Server.
@@ -82,6 +87,7 @@ type Config struct {
 	S3Endpoint         string        // custom endpoint for S3-compatible services
 	JWTSecret          string        // HS256 signing key for JWT tokens (min 32 chars)
 	AuthDisabled       bool          // when true, skip API key auth and use a default org/user
+	FDADebug           bool          // when true, log raw FDA API request/response bodies
 	StaticFS           fs.FS         // embedded static assets for web UI (nil = web UI disabled)
 }
 
@@ -149,6 +155,7 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{
 		db:            db,
 		router:        http.NewServeMux(),
+		webhookSem:    make(chan struct{}, 10), // max 10 concurrent webhook deliveries
 		submissions:   repository.NewSubmissionRepo(db, cfg.EncryptionKey),
 		files:         repository.NewSubmissionFileRepo(db),
 		apiKeys:       repository.NewAPIKeyRepo(db),
@@ -170,6 +177,7 @@ func New(cfg Config) (*Server, error) {
 			ClientID:        cfg.FDAClientID,
 			ClientSecret:    cfg.FDAClientSecret,
 			Environment:     fdaEnv,
+			Debug:           cfg.FDADebug,
 		}),
 		fdaUserEmail:   cfg.FDAUserEmail,
 		fdaEnvironment: cfg.FDAEnvironment,
@@ -201,6 +209,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) Close() error {
 	s.stopStatusPoller()
+
+	// Wait for in-flight webhook deliveries to finish (with timeout).
+	done := make(chan struct{})
+	go func() {
+		s.webhookWG.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		s.logger.Info("all webhook deliveries finished")
+	case <-time.After(15 * time.Second):
+		s.logger.Warn("timed out waiting for webhook deliveries to finish")
+	}
+
 	return s.db.Close()
 }
 

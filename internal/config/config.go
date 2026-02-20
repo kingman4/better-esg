@@ -43,6 +43,9 @@ type Config struct {
 
 	// When true, API key auth is skipped (local dev convenience)
 	AuthDisabled bool
+
+	// When true, FDA API client logs raw request/response bodies for debugging
+	FDADebug bool
 }
 
 func Load() (*Config, error) {
@@ -91,6 +94,7 @@ func Load() (*Config, error) {
 
 	logLevel := envOrDefault("LOG_LEVEL", "info")
 	authDisabled := os.Getenv("AUTH_DISABLED") == "true"
+	fdaDebug := os.Getenv("FDA_DEBUG") == "true"
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if !authDisabled && jwtSecret != "" && len(jwtSecret) < 32 {
@@ -126,6 +130,7 @@ func Load() (*Config, error) {
 		S3Endpoint:         os.Getenv("S3_ENDPOINT"),
 		JWTSecret:          jwtSecret,
 		AuthDisabled:       authDisabled,
+		FDADebug:           fdaDebug,
 	}, nil
 }
 

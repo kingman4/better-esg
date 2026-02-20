@@ -28,6 +28,7 @@ type Config struct {
 	ClientID        string
 	ClientSecret    string
 	Environment     Environment // prod or test
+	Debug           bool        // when true, log raw FDA request/response bodies
 }
 
 // Client interacts with the FDA ESG NextGen API.
@@ -352,7 +353,9 @@ func (c *Client) GetPayload(ctx context.Context) (*PayloadResponse, error) {
 			return &permanentError{err: fdaErr}
 		}
 
-		fmt.Printf("[DEBUG] GetPayload raw response: %s\n", truncate(string(bodyBytes), 1000))
+		if c.config.Debug {
+			fmt.Printf("[FDA_DEBUG] GetPayload raw response: %s\n", truncate(string(bodyBytes), 1000))
+		}
 
 		var wrapper payloadResponseWrapper
 		if err := json.Unmarshal(bodyBytes, &wrapper); err != nil {

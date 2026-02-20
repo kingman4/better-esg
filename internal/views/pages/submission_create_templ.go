@@ -148,96 +148,56 @@ func CreateSubmissionPage(data CreateSubmissionData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">EUA — Emergency Use Authorization</option></select></div><div><label for=\"fda_center\" class=\"block text-sm font-medium text-gray-700\">FDA Center <span class=\"text-gray-400 text-xs font-normal\">(optional)</span></label> <select id=\"fda_center\" name=\"fda_center\" class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\"><option value=\"\">-- None --</option> <option value=\"CDER\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">EUA — Emergency Use Authorization</option></select></div><div><label for=\"fda_center\" class=\"block text-sm font-medium text-gray-700\">FDA Center <span class=\"text-red-500\">*</span></label><p id=\"center-hint\" class=\"mt-1 text-xs text-gray-500\">Select a submission type first to see valid centers.</p><select id=\"fda_center\" name=\"fda_center\" required class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\"><option value=\"\" disabled")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.FDACenter == "CDER" {
+			if data.FDACenter == "" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, ">CDER — Center for Drug Evaluation and Research</option> <option value=\"CBER\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, ">-- Select a center --</option> <option value=\"CDER\" data-types=\"NDA,ANDA,IND,DMF\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.FDACenter == "CBER" {
+			if data.FDACenter == "CDER" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ">CBER — Center for Biologics Evaluation and Research</option> <option value=\"CDRH\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ">CDER — Center for Drug Evaluation and Research</option> <option value=\"CBER\" data-types=\"BLA,510K,EUA\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.FDACenter == "CDRH" {
+			if data.FDACenter == "CBER" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, ">CDRH — Center for Devices and Radiological Health</option> <option value=\"CVM\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if data.FDACenter == "CVM" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, ">CVM — Center for Veterinary Medicine</option> <option value=\"CTP\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if data.FDACenter == "CTP" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, ">CTP — Center for Tobacco Products</option> <option value=\"CFSAN\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if data.FDACenter == "CFSAN" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, ">CFSAN — Center for Food Safety and Applied Nutrition</option> <option value=\"OC\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if data.FDACenter == "OC" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, ">OC — Office of the Commissioner</option></select></div><div><label for=\"description\" class=\"block text-sm font-medium text-gray-700\">Description <span class=\"text-gray-400 text-xs font-normal\">(optional)</span></label> <textarea id=\"description\" name=\"description\" rows=\"3\" class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\" placeholder=\"Brief description of this submission\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, ">CBER — Center for Biologics Evaluation and Research</option></select></div><script>\n\t\t\t\t(function() {\n\t\t\t\t\tvar typeSelect = document.getElementById('submission_type');\n\t\t\t\t\tvar centerSelect = document.getElementById('fda_center');\n\t\t\t\t\tvar hint = document.getElementById('center-hint');\n\t\t\t\t\tvar centerOptions = centerSelect.querySelectorAll('option[data-types]');\n\n\t\t\t\t\tfunction filterCenters() {\n\t\t\t\t\t\tvar selectedType = typeSelect.value;\n\t\t\t\t\t\tvar visibleCount = 0;\n\t\t\t\t\t\tvar lastVisible = null;\n\n\t\t\t\t\t\t// Reset to placeholder if current selection is no longer valid\n\t\t\t\t\t\tvar currentValid = false;\n\n\t\t\t\t\t\tcenterOptions.forEach(function(opt) {\n\t\t\t\t\t\t\tvar types = opt.getAttribute('data-types').split(',');\n\t\t\t\t\t\t\tif (!selectedType || types.indexOf(selectedType) !== -1) {\n\t\t\t\t\t\t\t\topt.hidden = false;\n\t\t\t\t\t\t\t\topt.disabled = false;\n\t\t\t\t\t\t\t\tvisibleCount++;\n\t\t\t\t\t\t\t\tlastVisible = opt;\n\t\t\t\t\t\t\t\tif (opt.value === centerSelect.value) currentValid = true;\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\topt.hidden = true;\n\t\t\t\t\t\t\t\topt.disabled = true;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t});\n\n\t\t\t\t\t\tif (!currentValid) {\n\t\t\t\t\t\t\tcenterSelect.value = '';\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\t// Auto-select if only one valid center\n\t\t\t\t\t\tif (visibleCount === 1 && lastVisible) {\n\t\t\t\t\t\t\tcenterSelect.value = lastVisible.value;\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\t// Update hint text\n\t\t\t\t\t\tif (!selectedType) {\n\t\t\t\t\t\t\thint.textContent = 'Select a submission type first to see valid centers.';\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\thint.textContent = '';\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\ttypeSelect.addEventListener('change', filterCenters);\n\t\t\t\t\t// Run on page load in case type is pre-selected (e.g. validation error re-render)\n\t\t\t\t\tfilterCenters();\n\t\t\t\t})();\n\t\t\t\t</script><div><label for=\"description\" class=\"block text-sm font-medium text-gray-700\">Description <span class=\"text-gray-400 text-xs font-normal\">(optional)</span></label> <textarea id=\"description\" name=\"description\" rows=\"3\" class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\" placeholder=\"Brief description of this submission\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(data.Desc)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/views/pages/submission_create.templ`, Line: 65, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/views/pages/submission_create.templ`, Line: 112, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</textarea></div><div><label for=\"files\" class=\"block text-sm font-medium text-gray-700\">Files <span class=\"text-red-500\">*</span></label><p class=\"mt-1 text-xs text-gray-500\">Select one or more files to include in this submission.</p><input id=\"files\" name=\"files\" type=\"file\" multiple required class=\"mt-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100\"></div><div class=\"flex justify-end space-x-3 pt-4 border-t border-gray-200\"><a href=\"/dashboard/submissions\" class=\"px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50\">Cancel</a> <button type=\"submit\" class=\"px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500\">Create Submission</button></div></form></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</textarea></div><div><label for=\"files\" class=\"block text-sm font-medium text-gray-700\">Files <span class=\"text-red-500\">*</span></label><p class=\"mt-1 text-xs text-gray-500\">Select one or more files to include in this submission.</p><input id=\"files\" name=\"files\" type=\"file\" multiple required class=\"mt-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100\"></div><div class=\"flex justify-end space-x-3 pt-4 border-t border-gray-200\"><a href=\"/dashboard/submissions\" class=\"px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50\">Cancel</a> <button type=\"submit\" class=\"px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500\">Create Submission</button></div></form></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = views.BaseLayout("New Submission", true, data.UserEmail, "/dashboard/submissions").Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = views.BaseLayout("New Submission", true, data.UserEmail, "/dashboard/submissions", data.Env).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -42,11 +42,15 @@ type webhookPayload struct {
 
 // dispatchWebhooks finds all active webhooks for the org + event type,
 // then delivers the payload asynchronously. Never blocks the caller.
+// Deliveries are bounded by webhookSem and tracked by webhookWG for graceful shutdown.
 func (s *Server) dispatchWebhooks(orgID string, event WebhookEvent) {
 	if s.webhooks == nil {
 		return // webhooks not configured
 	}
+	s.webhookWG.Add(1)
 	go func() {
+		defer s.webhookWG.Done()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
@@ -81,7 +85,14 @@ func (s *Server) dispatchWebhooks(orgID string, event WebhookEvent) {
 
 		for i := range webhooks {
 			wh := webhooks[i]
-			go s.deliverWebhook(ctx, wh, body, payloadMap)
+			s.webhookWG.Add(1)
+			go func() {
+				defer s.webhookWG.Done()
+				// Acquire semaphore slot (blocks if at capacity)
+				s.webhookSem <- struct{}{}
+				defer func() { <-s.webhookSem }()
+				s.deliverWebhook(ctx, wh, body, payloadMap)
+			}()
 		}
 	}()
 }
@@ -174,7 +185,13 @@ func sendWebhookRequest(ctx context.Context, client *http.Client, url string, bo
 // dispatchTestWebhook sends a synthetic test event directly to a single webhook.
 // Unlike dispatchWebhooks, this bypasses event type matching.
 func (s *Server) dispatchTestWebhook(wh repository.Webhook) {
+	s.webhookWG.Add(1)
 	go func() {
+		defer s.webhookWG.Done()
+		// Acquire semaphore slot
+		s.webhookSem <- struct{}{}
+		defer func() { <-s.webhookSem }()
+
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
