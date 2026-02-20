@@ -255,6 +255,65 @@ func (r *SubmissionRepo) ListByWorkflowStates(ctx context.Context, states []stri
 	return submissions, rows.Err()
 }
 
+// ListByWorkflowStatesWithBackoff returns in-flight submissions that are due for polling,
+// respecting exponential backoff. Submissions whose last_polled_at is too recent (given
+// the backoff interval for their age) are skipped. The minInterval callback computes the
+// minimum time between polls based on how long since submitted_at.
+func (r *SubmissionRepo) ListByWorkflowStatesWithBackoff(ctx context.Context, states []string) ([]Submission, error) {
+	// Backoff tiers computed in SQL:
+	//   submitted < 30 min ago  → poll every cycle (no filter)
+	//   30 min – 2 hours        → wait 10 min between polls
+	//   2 – 24 hours            → wait 30 min between polls
+	//   > 24 hours              → wait 1 hour between polls
+	query := `
+		SELECT id, org_id, core_id, fda_center, submission_type, submission_name, submission_protocol,
+		       file_count, total_size_bytes, description, status, workflow_state,
+		       payload_id, upload_file_link, submit_form_link,
+		       created_by, created_at, submitted_at, completed_at, updated_at
+		FROM submissions
+		WHERE (workflow_state = ANY($1) OR workflow_state LIKE 'UNKNOWN_FDA_STATUS%')
+		  AND core_id IS NOT NULL
+		  AND (
+		    last_polled_at IS NULL
+		    OR submitted_at IS NULL
+		    OR submitted_at > NOW() - INTERVAL '30 minutes'
+		    OR (submitted_at > NOW() - INTERVAL '2 hours'   AND last_polled_at < NOW() - INTERVAL '10 minutes')
+		    OR (submitted_at > NOW() - INTERVAL '24 hours'  AND last_polled_at < NOW() - INTERVAL '30 minutes')
+		    OR (submitted_at <= NOW() - INTERVAL '24 hours' AND last_polled_at < NOW() - INTERVAL '1 hour')
+		  )
+		ORDER BY updated_at ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(states))
+	if err != nil {
+		return nil, fmt.Errorf("listing submissions with backoff: %w", err)
+	}
+	defer rows.Close()
+
+	var submissions []Submission
+	for rows.Next() {
+		var s Submission
+		if err := rows.Scan(
+			&s.ID, &s.OrgID, &s.CoreID, &s.FDACenter, &s.SubmissionType, &s.SubmissionName,
+			&s.SubmissionProtocol, &s.FileCount, &s.TotalSizeBytes, &s.Description,
+			&s.Status, &s.WorkflowState, &s.PayloadID, &s.UploadFileLink, &s.SubmitFormLink,
+			&s.CreatedBy, &s.CreatedAt, &s.SubmittedAt, &s.CompletedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning submission row: %w", err)
+		}
+		submissions = append(submissions, s)
+	}
+	return submissions, rows.Err()
+}
+
+// UpdateLastPolledAt sets last_polled_at to NOW() for a submission.
+func (r *SubmissionRepo) UpdateLastPolledAt(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE submissions SET last_polled_at = NOW() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("updating last_polled_at: %w", err)
+	}
+	return nil
+}
+
 // CountByWorkflowState returns a map of workflow_state → count for all submissions in an org.
 func (r *SubmissionRepo) CountByWorkflowState(ctx context.Context, orgID string) (map[string]int, error) {
 	query := `SELECT workflow_state, COUNT(*) FROM submissions WHERE org_id = $1 GROUP BY workflow_state`
