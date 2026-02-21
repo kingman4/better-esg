@@ -10,6 +10,10 @@ import (
 // pollableStates are the workflow states that need background FDA polling.
 var pollableStates = []string{"SUBMITTED", "UPLOADING_TO_FDA", "SUBMITTED_TO_CENTER", "PROCESSING"}
 
+// pollerAdvisoryLockID is the PostgreSQL advisory lock key used to ensure only
+// one server instance runs the background poller at a time.
+const pollerAdvisoryLockID = 827364 // arbitrary fixed number
+
 // startStatusPoller launches a background goroutine that periodically polls FDA
 // for all in-flight submissions and updates the local DB.
 func (s *Server) startStatusPoller(ctx context.Context, interval time.Duration) {
@@ -38,9 +42,27 @@ func (s *Server) stopStatusPoller() {
 	}
 }
 
-// pollAllSubmissions queries the DB for all in-flight submissions and polls FDA for each.
+// pollAllSubmissions acquires a PostgreSQL advisory lock (so only one instance
+// polls at a time), queries in-flight submissions with exponential backoff, and
+// polls FDA for each one.
 func (s *Server) pollAllSubmissions(ctx context.Context) {
-	subs, err := s.submissions.ListByWorkflowStates(ctx, pollableStates)
+	// Advisory lock: if another instance is already polling, skip this cycle.
+	var acquired bool
+	if err := s.db.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, pollerAdvisoryLockID).Scan(&acquired); err != nil {
+		s.logger.Error("poller: failed to acquire advisory lock", "error", err)
+		return
+	}
+	if !acquired {
+		s.logger.Debug("poller: another instance is already polling, skipping")
+		return
+	}
+	defer func() {
+		if _, err := s.db.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, pollerAdvisoryLockID); err != nil {
+			s.logger.Error("poller: failed to release advisory lock", "error", err)
+		}
+	}()
+
+	subs, err := s.submissions.ListByWorkflowStatesWithBackoff(ctx, pollableStates)
 	if err != nil {
 		s.logger.Error("poller: failed to list in-flight submissions", "error", err)
 		return
@@ -56,6 +78,33 @@ func (s *Server) pollAllSubmissions(ctx context.Context) {
 			return
 		}
 		s.pollSubmission(ctx, &subs[i])
+
+		// Record that we polled this submission (for backoff calculation).
+		if err := s.submissions.UpdateLastPolledAt(ctx, subs[i].ID); err != nil {
+			s.logger.Error("poller: failed to update last_polled_at", "submission_id", subs[i].ID, "error", err)
+		}
+	}
+}
+
+// pollBackoffInterval returns the minimum time between polls for a submission
+// based on how long it has been in-flight (since submitted_at).
+//
+// Backoff tiers:
+//
+//	< 30 min   → poll every cycle (0)
+//	30m – 2h   → 10 min between polls
+//	2h – 24h   → 30 min between polls
+//	> 24h      → 1 hour between polls
+func pollBackoffInterval(sinceSubmit time.Duration) time.Duration {
+	switch {
+	case sinceSubmit < 30*time.Minute:
+		return 0
+	case sinceSubmit < 2*time.Hour:
+		return 10 * time.Minute
+	case sinceSubmit < 24*time.Hour:
+		return 30 * time.Minute
+	default:
+		return 1 * time.Hour
 	}
 }
 

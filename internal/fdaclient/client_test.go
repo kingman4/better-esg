@@ -1076,8 +1076,8 @@ func newStatusServer(t *testing.T) *httptest.Server {
 			})
 
 		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
-			auth := r.Header.Get("accesstoken")
-			if auth != "status-token" {
+			auth := r.Header.Get("Authorization")
+			if auth != "Bearer status-token" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
@@ -1160,7 +1160,7 @@ func TestGetSubmissionStatus_SendsAccessToken(t *testing.T) {
 			})
 			return
 		}
-		receivedAuth = r.Header.Get("accesstoken")
+		receivedAuth = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"core_id": "C1", "status": "PENDING", "esgngcode": "ESGNG200",
@@ -1180,8 +1180,8 @@ func TestGetSubmissionStatus_SendsAccessToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if receivedAuth != "my-tok" {
-		t.Errorf("expected 'my-tok', got %q", receivedAuth)
+	if receivedAuth != "Bearer my-tok" {
+		t.Errorf("expected 'Bearer my-tok', got %q", receivedAuth)
 	}
 }
 

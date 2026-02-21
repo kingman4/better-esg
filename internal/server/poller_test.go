@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -592,4 +593,203 @@ func TestListAcknowledgements_RequiresAuth(t *testing.T) {
 	srv.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// --- Single-Instance Polling Tests ---
+
+func TestPollAllSubmissions_AdvisoryLockPreventsDoublePolling(t *testing.T) {
+	// Verify that two concurrent pollAllSubmissions calls don't both poll the same submission.
+	// Use a slow FDA server so the first poll is still running when the second starts.
+	// Track only calls for our specific core_id (shared DB has other in-flight submissions).
+	var targetCoreID string
+	var targetCalls atomic.Int64
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
+			coreID := strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/submissions/")
+			if coreID == targetCoreID {
+				targetCalls.Add(1)
+				time.Sleep(200 * time.Millisecond) // simulate slow FDA response
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"core_id": coreID, "status": "PROCESSING",
+				"esgngcode": "ESGNG210", "esgngdescription": "ok",
+				"acknowledgements": []map[string]string{},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL, UploadBaseURL: fdaServer.URL,
+		ClientID: "id", ClientSecret: "secret", Environment: fdaclient.EnvTest,
+	})
+	srv := newTestServerWithFDA(t, fdaClient)
+	suffix := fmt.Sprintf("advisory-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+
+	// Create one in-flight submission and record its core_id
+	_, coreID := setupSubmittedSub(t, srv, orgID, userID, suffix)
+	targetCoreID = coreID
+
+	// Run two poll cycles concurrently
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); srv.pollAllSubmissions(context.Background()) }()
+	go func() { defer wg.Done(); srv.pollAllSubmissions(context.Background()) }()
+	wg.Wait()
+
+	// With advisory lock, only one should have polled our submission.
+	// The other should have skipped (lock not acquired).
+	assert.Equal(t, int64(1), targetCalls.Load(),
+		"advisory lock should prevent concurrent polling — expected 1 FDA call for our submission, got %d", targetCalls.Load())
+}
+
+// --- Exponential Backoff Tests ---
+
+func TestPollAllSubmissions_BackoffSkipsRecentlyPolled(t *testing.T) {
+	// A submission that was polled very recently should be skipped when
+	// it's been in-flight long enough to trigger backoff.
+	// Track only calls for our specific core_id (shared DB has other in-flight submissions).
+	var targetCoreID string
+	var targetCalls atomic.Int64
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
+			coreID := strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/submissions/")
+			if coreID == targetCoreID {
+				targetCalls.Add(1)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"core_id": coreID, "status": "PROCESSING",
+				"esgngcode": "ESGNG210", "esgngdescription": "ok",
+				"acknowledgements": []map[string]string{},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL, UploadBaseURL: fdaServer.URL,
+		ClientID: "id", ClientSecret: "secret", Environment: fdaclient.EnvTest,
+	})
+	srv := newTestServerWithFDA(t, fdaClient)
+	suffix := fmt.Sprintf("backoff-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+
+	subID, coreID := setupSubmittedSub(t, srv, orgID, userID, suffix)
+	targetCoreID = coreID
+
+	// First poll should work (submission is brand new, no backoff)
+	srv.pollAllSubmissions(context.Background())
+	assert.Equal(t, int64(1), targetCalls.Load(), "first poll should call FDA for our submission")
+
+	// Now simulate the submission being in-flight for 6 hours (moderate backoff: 15-30 min)
+	// by backdating submitted_at, and set last_polled_at to 1 minute ago.
+	ctx := context.Background()
+	_, err := testDB.ExecContext(ctx,
+		`UPDATE submissions SET submitted_at = NOW() - INTERVAL '6 hours', last_polled_at = NOW() - INTERVAL '1 minute' WHERE id = $1`, subID)
+	require.NoError(t, err)
+
+	// Second poll should SKIP this submission (polled 1 min ago, but backoff is 15+ min)
+	srv.pollAllSubmissions(context.Background())
+	assert.Equal(t, int64(1), targetCalls.Load(),
+		"second poll should skip — last_polled_at too recent for 6h backoff")
+
+	// Now backdate last_polled_at to 30 minutes ago — should poll again
+	_, err = testDB.ExecContext(ctx,
+		`UPDATE submissions SET last_polled_at = NOW() - INTERVAL '30 minutes' WHERE id = $1`, subID)
+	require.NoError(t, err)
+
+	srv.pollAllSubmissions(context.Background())
+	assert.Equal(t, int64(2), targetCalls.Load(),
+		"third poll should proceed — last_polled_at old enough for 6h backoff")
+}
+
+func TestPollAllSubmissions_NewSubmissionsPolledImmediately(t *testing.T) {
+	// Newly submitted items (< 30 min) should always be polled, even with backoff enabled.
+	// Track only calls for our specific core_id (shared DB has other in-flight submissions).
+	var targetCoreID string
+	var targetCalls atomic.Int64
+	fdaServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/as/token.oauth2":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "test-token", "token_type": "Bearer", "expires_in": 3600,
+			})
+		case strings.HasPrefix(r.URL.Path, "/api/esgng/v1/submissions/") && r.Method == http.MethodGet:
+			coreID := strings.TrimPrefix(r.URL.Path, "/api/esgng/v1/submissions/")
+			if coreID == targetCoreID {
+				targetCalls.Add(1)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"core_id": coreID, "status": "PROCESSING",
+				"esgngcode": "ESGNG210", "esgngdescription": "ok",
+				"acknowledgements": []map[string]string{},
+			})
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer fdaServer.Close()
+
+	fdaClient := fdaclient.New(fdaclient.Config{
+		ExternalBaseURL: fdaServer.URL, UploadBaseURL: fdaServer.URL,
+		ClientID: "id", ClientSecret: "secret", Environment: fdaclient.EnvTest,
+	})
+	srv := newTestServerWithFDA(t, fdaClient)
+	suffix := fmt.Sprintf("newpoll-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+
+	_, coreID := setupSubmittedSub(t, srv, orgID, userID, suffix)
+	targetCoreID = coreID
+
+	// Poll twice in a row — new submissions should be polled each time
+	srv.pollAllSubmissions(context.Background())
+	srv.pollAllSubmissions(context.Background())
+	assert.Equal(t, int64(2), targetCalls.Load(),
+		"new submissions (< 30 min) should always be polled")
+}
+
+func TestUpdateLastPolledAt(t *testing.T) {
+	srv := newTestServer(t)
+	suffix := fmt.Sprintf("lastpoll-%d", time.Now().UnixNano())
+	orgID, userID := seedTestData(t, suffix)
+
+	subID, _ := setupSubmittedSub(t, srv, orgID, userID, suffix)
+
+	// Initially last_polled_at should be NULL
+	var lastPolled sql.NullTime
+	err := testDB.QueryRowContext(context.Background(),
+		`SELECT last_polled_at FROM submissions WHERE id = $1`, subID).Scan(&lastPolled)
+	require.NoError(t, err)
+	assert.False(t, lastPolled.Valid, "last_polled_at should be NULL initially")
+
+	// Update it
+	err = srv.submissions.UpdateLastPolledAt(context.Background(), subID)
+	require.NoError(t, err)
+
+	err = testDB.QueryRowContext(context.Background(),
+		`SELECT last_polled_at FROM submissions WHERE id = $1`, subID).Scan(&lastPolled)
+	require.NoError(t, err)
+	assert.True(t, lastPolled.Valid, "last_polled_at should be set after update")
+	assert.WithinDuration(t, time.Now(), lastPolled.Time, 5*time.Second)
 }
