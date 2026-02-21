@@ -29,53 +29,118 @@ templ CreateSubmissionPage(data CreateSubmissionData) {
 				</div>
 
 				<div>
-					<label for="submission_type" class="block text-sm font-medium text-gray-700">Submission Type <span class="text-red-500">*</span></label>
-					<select id="submission_type" name="submission_type" required
+					<label for="fda_center" class="block text-sm font-medium text-gray-700">FDA Center <span class="text-red-500">*</span></label>
+					<select id="fda_center" name="fda_center" required
 						class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
-						<option value="" disabled selected?={ data.Type == "" }>-- Select a type --</option>
-						<option value="NDA" selected?={ data.Type == "NDA" }>NDA — New Drug Application</option>
-						<option value="ANDA" selected?={ data.Type == "ANDA" }>ANDA — Abbreviated New Drug Application (Generic)</option>
-						<option value="IND" selected?={ data.Type == "IND" }>IND — Investigational New Drug</option>
-						<option value="BLA" selected?={ data.Type == "BLA" }>BLA — Biologics License Application</option>
-						<option value="DMF" selected?={ data.Type == "DMF" }>DMF — Drug Master File</option>
-						<option value="510K" selected?={ data.Type == "510K" }>510K — Premarket Notification (Medical Devices)</option>
-						<option value="EUA" selected?={ data.Type == "EUA" }>EUA — Emergency Use Authorization</option>
+						<option value="" disabled selected?={ data.FDACenter == "" }>-- Select a center --</option>
+						<option value="CBER" selected?={ data.FDACenter == "CBER" }>CBER — Center for Biologics Evaluation and Research</option>
+						<option value="CDER" selected?={ data.FDACenter == "CDER" }>CDER — Center for Drug Evaluation and Research</option>
+						<option value="CDRH" selected?={ data.FDACenter == "CDRH" }>CDRH — Center for Devices and Radiological Health</option>
+						<option value="CFSAN" selected?={ data.FDACenter == "CFSAN" }>CFSAN (HFP) — Center for Food Safety and Applied Nutrition</option>
+						<option value="CTP" selected?={ data.FDACenter == "CTP" }>CTP — Center for Tobacco Products</option>
+						<option value="CVM" selected?={ data.FDACenter == "CVM" }>CVM — Center for Veterinary Medicine</option>
+						<option value="OC" selected?={ data.FDACenter == "OC" }>OC — Office of the Commissioner</option>
+						<option value="OII" selected?={ data.FDACenter == "OII" }>OII — Office of International Programs</option>
+						<option value="OOPD" selected?={ data.FDACenter == "OOPD" }>OOPD — Office of Orphan Products Development</option>
+						<option value="OPQ" selected?={ data.FDACenter == "OPQ" }>OPQ — Office of Pharmaceutical Quality</option>
+						<option value="HealthCanada" selected?={ data.FDACenter == "HealthCanada" }>Health Canada</option>
 					</select>
 				</div>
 
 				<div>
-					<label for="fda_center" class="block text-sm font-medium text-gray-700">FDA Center <span class="text-red-500">*</span></label>
-					<p id="center-hint" class="mt-1 text-xs text-gray-500">Select a submission type first to see valid centers.</p>
-					<select id="fda_center" name="fda_center" required
+					<label for="submission_type" class="block text-sm font-medium text-gray-700">Submission Type <span class="text-red-500">*</span></label>
+					<p id="type-hint" class="mt-1 text-xs text-gray-500">Select a center first to see valid submission types.</p>
+					<select id="submission_type" name="submission_type" required
 						class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border">
-						<option value="" disabled selected?={ data.FDACenter == "" }>-- Select a center --</option>
-						<option value="CDER" data-types="NDA,ANDA,IND,DMF" selected?={ data.FDACenter == "CDER" }>CDER — Center for Drug Evaluation and Research</option>
-						<option value="CBER" data-types="BLA,510K,EUA" selected?={ data.FDACenter == "CBER" }>CBER — Center for Biologics Evaluation and Research</option>
+						<option value="" disabled selected?={ data.Type == "" }>-- Select a type --</option>
+						<!-- CBER -->
+						<option value="510K" data-centers="CBER" selected?={ data.Type == "510K" }>510K</option>
+						<option value="AERS" data-centers="CBER,CDER" selected?={ data.Type == "AERS" }>AERS</option>
+						<option value="AERS Attachments" data-centers="CBER,CDER" selected?={ data.Type == "AERS Attachments" }>AERS Attachments</option>
+						<option value="AERS_PREMKT_CBER" data-centers="CBER" selected?={ data.Type == "AERS_PREMKT_CBER" }>AERS_PREMKT_CBER</option>
+						<option value="EBLA" data-centers="CBER" selected?={ data.Type == "EBLA" }>EBLA — Electronic Biologics License Application</option>
+						<option value="eDMF" data-centers="CBER" selected?={ data.Type == "eDMF" }>eDMF — Electronic Drug Master File</option>
+						<option value="EIDE" data-centers="CBER" selected?={ data.Type == "EIDE" }>EIDE — Electronic Investigational Device Exemption</option>
+						<option value="EIND" data-centers="CBER,CDER" selected?={ data.Type == "EIND" }>EIND — Electronic Investigational New Drug</option>
+						<option value="EUA" data-centers="CBER" selected?={ data.Type == "EUA" }>EUA — Emergency Use Authorization</option>
+						<option value="Lot_Release_Protocol" data-centers="CBER" selected?={ data.Type == "Lot_Release_Protocol" }>Lot_Release_Protocol</option>
+						<option value="NDA" data-centers="CBER" selected?={ data.Type == "NDA" }>NDA — New Drug Application</option>
+						<option value="PMA" data-centers="CBER" selected?={ data.Type == "PMA" }>PMA — Premarket Approval</option>
+						<option value="Pre_IND" data-centers="CBER" selected?={ data.Type == "Pre_IND" }>Pre_IND — Pre-Investigational New Drug</option>
+						<option value="Promotional_Materials" data-centers="CBER" selected?={ data.Type == "Promotional_Materials" }>Promotional_Materials</option>
+						<option value="QSUBS" data-centers="CBER" selected?={ data.Type == "QSUBS" }>QSUBS — Q-Submissions</option>
+						<option value="SEND_PILOT" data-centers="CBER" selected?={ data.Type == "SEND_PILOT" }>SEND_PILOT</option>
+						<option value="SPL_LDD" data-centers="CBER" selected?={ data.Type == "SPL_LDD" }>SPL_LDD — Structured Product Labeling</option>
+						<option value="VAERS" data-centers="CBER" selected?={ data.Type == "VAERS" }>VAERS — Vaccine Adverse Event Reporting</option>
+						<!-- CDER -->
+						<option value="ACA6004_Drug_Samples" data-centers="CDER" selected?={ data.Type == "ACA6004_Drug_Samples" }>ACA6004_Drug_Samples</option>
+						<option value="AERS_PREMKT_CDER" data-centers="CDER" selected?={ data.Type == "AERS_PREMKT_CDER" }>AERS_PREMKT_CDER</option>
+						<option value="ECTD" data-centers="CDER" selected?={ data.Type == "ECTD" }>ECTD — Electronic Common Technical Document</option>
+						<option value="ECTD WAIVED" data-centers="CDER" selected?={ data.Type == "ECTD WAIVED" }>ECTD WAIVED</option>
+						<option value="EDMF_TYPEIII" data-centers="CDER" selected?={ data.Type == "EDMF_TYPEIII" }>EDMF_TYPEIII — Electronic Drug Master File Type III</option>
+						<option value="FFU-PILOT" data-centers="CDER" selected?={ data.Type == "FFU-PILOT" }>FFU-PILOT</option>
+						<option value="GDUFA_Facility_Registration" data-centers="CDER" selected?={ data.Type == "GDUFA_Facility_Registration" }>GDUFA_Facility_Registration</option>
+						<option value="PFC" data-centers="CDER" selected?={ data.Type == "PFC" }>PFC</option>
+						<option value="POR Large Molecule Documents" data-centers="CDER" selected?={ data.Type == "POR Large Molecule Documents" }>POR Large Molecule Documents</option>
+						<option value="Voluntary_Direct_Aes" data-centers="CDER" selected?={ data.Type == "Voluntary_Direct_Aes" }>Voluntary_Direct_Aes</option>
+						<!-- CDRH -->
+						<option value="Adverse Events" data-centers="CDRH,CTP" selected?={ data.Type == "Adverse Events" }>Adverse Events</option>
+						<option value="Electronic_Submissions" data-centers="CDRH" selected?={ data.Type == "Electronic_Submissions" }>Electronic_Submissions</option>
+						<option value="GUDID" data-centers="CDRH" selected?={ data.Type == "GUDID" }>GUDID — Global Unique Device Identification Database</option>
+						<!-- CFSAN (HFP) -->
+						<option value="DSR_Adverse_Events" data-centers="CFSAN" selected?={ data.Type == "DSR_Adverse_Events" }>DSR_Adverse_Events</option>
+						<option value="EON-Payload-Files" data-centers="CFSAN" selected?={ data.Type == "EON-Payload-Files" }>EON-Payload-Files</option>
+						<option value="Food_Pilot_Listing" data-centers="CFSAN" selected?={ data.Type == "Food_Pilot_Listing" }>Food_Pilot_Listing</option>
+						<option value="Form3479" data-centers="CFSAN" selected?={ data.Type == "Form3479" }>Form3479</option>
+						<option value="Form3480" data-centers="CFSAN" selected?={ data.Type == "Form3480" }>Form3480</option>
+						<option value="Form3480A" data-centers="CFSAN" selected?={ data.Type == "Form3480A" }>Form3480A</option>
+						<option value="Form3503" data-centers="CFSAN" selected?={ data.Type == "Form3503" }>Form3503</option>
+						<option value="Form3665" data-centers="CFSAN" selected?={ data.Type == "Form3665" }>Form3665</option>
+						<option value="Form3666" data-centers="CFSAN" selected?={ data.Type == "Form3666" }>Form3666</option>
+						<option value="Form3667" data-centers="CFSAN" selected?={ data.Type == "Form3667" }>Form3667</option>
+						<option value="NDI" data-centers="CFSAN" selected?={ data.Type == "NDI" }>NDI — New Dietary Ingredient</option>
+						<option value="Threshold_of_Regulation" data-centers="CFSAN" selected?={ data.Type == "Threshold_of_Regulation" }>Threshold_of_Regulation</option>
+						<!-- CTP -->
+						<option value="Electronic_Submission" data-centers="CTP" selected?={ data.Type == "Electronic_Submission" }>Electronic_Submission</option>
+						<!-- CVM -->
+						<option value="Adverse_Events_Reports" data-centers="CVM" selected?={ data.Type == "Adverse_Events_Reports" }>Adverse_Events_Reports</option>
+						<option value="eSubmitter" data-centers="CVM" selected?={ data.Type == "eSubmitter" }>eSubmitter</option>
+						<!-- OC -->
+						<option value="SPL" data-centers="OC" selected?={ data.Type == "SPL" }>SPL — Structured Product Labeling</option>
+						<option value="OCAC" data-centers="OC" selected?={ data.Type == "OCAC" }>OCAC</option>
+						<!-- OII -->
+						<option value="Document_Requests" data-centers="OII" selected?={ data.Type == "Document_Requests" }>Document_Requests</option>
+						<option value="POR Small Molecule Documents" data-centers="OII,OPQ" selected?={ data.Type == "POR Small Molecule Documents" }>POR Small Molecule Documents</option>
+						<!-- OOPD -->
+						<option value="HUD_Designation_Requests" data-centers="OOPD" selected?={ data.Type == "HUD_Designation_Requests" }>HUD_Designation_Requests</option>
+						<option value="Orphan_drug_Designation_Requests" data-centers="OOPD" selected?={ data.Type == "Orphan_drug_Designation_Requests" }>Orphan_drug_Designation_Requests</option>
+						<!-- OPQ -->
+						<option value="7044a4_Pharma_Inspection_Records" data-centers="OPQ" selected?={ data.Type == "7044a4_Pharma_Inspection_Records" }>7044a4_Pharma_Inspection_Records</option>
+						<!-- Health Canada -->
+						<option value="Transaction" data-centers="HealthCanada" selected?={ data.Type == "Transaction" }>Transaction</option>
 					</select>
 				</div>
 				<script>
 				(function() {
-					var typeSelect = document.getElementById('submission_type');
 					var centerSelect = document.getElementById('fda_center');
-					var hint = document.getElementById('center-hint');
-					var centerOptions = centerSelect.querySelectorAll('option[data-types]');
+					var typeSelect = document.getElementById('submission_type');
+					var hint = document.getElementById('type-hint');
+					var typeOptions = typeSelect.querySelectorAll('option[data-centers]');
 
-					function filterCenters() {
-						var selectedType = typeSelect.value;
+					function filterTypes() {
+						var selectedCenter = centerSelect.value;
 						var visibleCount = 0;
 						var lastVisible = null;
-
-						// Reset to placeholder if current selection is no longer valid
 						var currentValid = false;
 
-						centerOptions.forEach(function(opt) {
-							var types = opt.getAttribute('data-types').split(',');
-							if (!selectedType || types.indexOf(selectedType) !== -1) {
+						typeOptions.forEach(function(opt) {
+							var centers = opt.getAttribute('data-centers').split(',');
+							if (!selectedCenter || centers.indexOf(selectedCenter) !== -1) {
 								opt.hidden = false;
 								opt.disabled = false;
 								visibleCount++;
 								lastVisible = opt;
-								if (opt.value === centerSelect.value) currentValid = true;
+								if (opt.value === typeSelect.value) currentValid = true;
 							} else {
 								opt.hidden = true;
 								opt.disabled = true;
@@ -83,25 +148,25 @@ templ CreateSubmissionPage(data CreateSubmissionData) {
 						});
 
 						if (!currentValid) {
-							centerSelect.value = '';
+							typeSelect.value = '';
 						}
 
-						// Auto-select if only one valid center
+						// Auto-select if only one valid type
 						if (visibleCount === 1 && lastVisible) {
-							centerSelect.value = lastVisible.value;
+							typeSelect.value = lastVisible.value;
 						}
 
 						// Update hint text
-						if (!selectedType) {
-							hint.textContent = 'Select a submission type first to see valid centers.';
+						if (!selectedCenter) {
+							hint.textContent = 'Select a center first to see valid submission types.';
 						} else {
 							hint.textContent = '';
 						}
 					}
 
-					typeSelect.addEventListener('change', filterCenters);
-					// Run on page load in case type is pre-selected (e.g. validation error re-render)
-					filterCenters();
+					centerSelect.addEventListener('change', filterTypes);
+					// Run on page load in case center is pre-selected (e.g. validation error re-render)
+					filterTypes();
 				})();
 				</script>
 
