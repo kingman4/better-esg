@@ -606,6 +606,7 @@ func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*Submi
 			return &permanentError{err: fmt.Errorf("creating status request: %w", err)}
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -614,10 +615,11 @@ func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*Submi
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
 			var errResp errorResponse
-			json.NewDecoder(resp.Body).Decode(&errResp)
-			fdaErr := fmt.Errorf("status request returned %d: %s (code: %s)",
-				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			json.Unmarshal(body, &errResp)
+			fdaErr := fmt.Errorf("status request returned %d: %s (code: %s) raw: %s",
+				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, string(body))
 			if isRetryable(resp.StatusCode) {
 				return &retryableError{err: fdaErr}
 			}

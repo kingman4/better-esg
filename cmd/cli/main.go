@@ -585,13 +585,17 @@ var submissionTypes = []choice{
 }
 
 var fdaCenters = []choice{
-	{"CDER", "Center for Drug Evaluation and Research"},
 	{"CBER", "Center for Biologics Evaluation and Research"},
+	{"CDER", "Center for Drug Evaluation and Research"},
 	{"CDRH", "Center for Devices and Radiological Health"},
-	{"CVM", "Center for Veterinary Medicine"},
+	{"HFP", "Center for Food Safety and Applied Nutrition"},
 	{"CTP", "Center for Tobacco Products"},
-	{"CFSAN", "Center for Food Safety and Applied Nutrition"},
+	{"CVM", "Center for Veterinary Medicine"},
 	{"OC", "Office of the Commissioner"},
+	{"OII", "Office of International Programs"},
+	{"OOPD", "Office of Orphan Products Development"},
+	{"OPQ", "Office of Pharmaceutical Quality"},
+	{"Health Canada", "Health Canada"},
 }
 
 // promptChoice displays a numbered menu on stderr and reads the user's selection

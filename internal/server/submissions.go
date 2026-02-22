@@ -118,6 +118,13 @@ func (s *Server) handleCreateSubmission(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
+	// Validate center/type combination if a center was provided.
+	if req.FDACenter != "" && !IsValidCenterType(req.FDACenter, req.SubmissionType) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "invalid fda_center / submission_type combination",
+		})
+		return
+	}
 
 	protocol := req.SubmissionProtocol
 	if protocol == "" {

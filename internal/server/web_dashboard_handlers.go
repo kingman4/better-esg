@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/kingman4/better-esg/internal/repository"
 	"github.com/kingman4/better-esg/internal/views/pages"
@@ -142,6 +143,9 @@ func (s *Server) buildDetailData(ctx context.Context, sub *repository.Submission
 		CreatedBy:     sub.CreatedBy,
 		CreatedAt:     sub.CreatedAt.Format("Jan 02, 2006 3:04 PM"),
 	}
+	if sub.CoreID.Valid {
+		data.CoreID = sub.CoreID.String
+	}
 	if sub.FDACenter.Valid {
 		data.FDACenter = sub.FDACenter.String
 	}
@@ -188,6 +192,49 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 
 	data := s.buildDetailData(r.Context(), sub, "")
 	pages.SubmissionStatusFragment(data).Render(r.Context(), w)
+}
+
+// handleCheckStatusNow manually triggers an FDA status poll for a single in-flight submission.
+// Rate-limited to one check per 30 seconds per submission.
+func (s *Server) handleCheckStatusNow(w http.ResponseWriter, r *http.Request) {
+	orgID := orgIDFromContext(r.Context())
+	subID := r.PathValue("id")
+
+	sub, err := s.submissions.GetByID(r.Context(), orgID, subID)
+	if err != nil {
+		s.logger.Error("check-status: failed to get submission", "id", subID, "error", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	if sub == nil {
+		http.Error(w, "Submission not found", http.StatusNotFound)
+		return
+	}
+
+	// Only allow for in-flight submissions with a core_id.
+	if !sub.CoreID.Valid || sub.CoreID.String == "" {
+		http.Error(w, "Submission has no FDA core_id", http.StatusBadRequest)
+		return
+	}
+
+	// Per-submission rate limit: 30 seconds.
+	if last, ok := s.manualCheckTimes.Load(subID); ok {
+		if time.Since(last.(time.Time)) < 30*time.Second {
+			http.Redirect(w, r, "/dashboard/submissions/"+subID, http.StatusFound)
+			return
+		}
+	}
+	s.manualCheckTimes.Store(subID, time.Now())
+
+	// Run the poll synchronously so the user sees the result on redirect.
+	s.pollSubmission(r.Context(), sub)
+
+	// Update last_polled_at.
+	if err := s.submissions.UpdateLastPolledAt(r.Context(), subID); err != nil {
+		s.logger.Error("check-status: failed to update last_polled_at", "id", subID, "error", err)
+	}
+
+	http.Redirect(w, r, "/dashboard/submissions/"+subID, http.StatusFound)
 }
 
 // handleRetrySubmission resets a failed submission back to INITIALIZED and re-triggers the workflow.
@@ -269,17 +316,33 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 
 	name := r.FormValue("name")
 	subType := r.FormValue("submission_type")
+	fdaCenter := r.FormValue("fda_center")
 
 	// Validate required fields
-	if name == "" || subType == "" {
+	if name == "" || subType == "" || fdaCenter == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		pages.CreateSubmissionPage(pages.CreateSubmissionData{
 			Env:       s.fdaEnvironment,
 			UserEmail: userEmail,
-			Error:     "Submission name and type are required",
+			Error:     "Submission name, FDA center, and type are required",
 			Name:      name,
 			Type:      subType,
-			FDACenter: r.FormValue("fda_center"),
+			FDACenter: fdaCenter,
+			Desc:      r.FormValue("description"),
+		}).Render(r.Context(), w)
+		return
+	}
+
+	// Validate center/type combination against FDA spec
+	if !IsValidCenterType(fdaCenter, subType) {
+		w.WriteHeader(http.StatusBadRequest)
+		pages.CreateSubmissionPage(pages.CreateSubmissionData{
+			Env:       s.fdaEnvironment,
+			UserEmail: userEmail,
+			Error:     "Invalid FDA center / submission type combination",
+			Name:      name,
+			Type:      subType,
+			FDACenter: fdaCenter,
 			Desc:      r.FormValue("description"),
 		}).Render(r.Context(), w)
 		return
@@ -295,7 +358,7 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 			Error:     "At least one file is required",
 			Name:      name,
 			Type:      subType,
-			FDACenter: r.FormValue("fda_center"),
+			FDACenter: fdaCenter,
 			Desc:      r.FormValue("description"),
 		}).Render(r.Context(), w)
 		return
@@ -304,7 +367,7 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 	// Create submission — file_count auto-calculated, protocol defaults to "API"
 	sub, err := s.submissions.Create(r.Context(), repository.CreateSubmissionParams{
 		OrgID:              orgID,
-		FDACenter:          r.FormValue("fda_center"),
+		FDACenter:          fdaCenter,
 		SubmissionType:     subType,
 		SubmissionName:     name,
 		SubmissionProtocol: "API",
@@ -321,7 +384,7 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 			Error:     "Failed to create submission",
 			Name:      name,
 			Type:      subType,
-			FDACenter: r.FormValue("fda_center"),
+			FDACenter: fdaCenter,
 			Desc:      r.FormValue("description"),
 		}).Render(r.Context(), w)
 		return
