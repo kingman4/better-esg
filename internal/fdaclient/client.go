@@ -618,8 +618,14 @@ func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*Submi
 			body, _ := io.ReadAll(resp.Body)
 			var errResp errorResponse
 			json.Unmarshal(body, &errResp)
-			fdaErr := fmt.Errorf("status request returned %d: %s (code: %s) raw: %s",
-				resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, string(body))
+			var fdaErr error
+			if c.config.Debug {
+				fdaErr = fmt.Errorf("status request returned %d: %s (code: %s) raw: %s",
+					resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode, string(body))
+			} else {
+				fdaErr = fmt.Errorf("status request returned %d: %s (code: %s)",
+					resp.StatusCode, errResp.ESGNGDescription, errResp.ESGNGCode)
+			}
 			if isRetryable(resp.StatusCode) {
 				return &retryableError{err: fdaErr}
 			}
