@@ -83,7 +83,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("ENCRYPTION_KEY must be 32 bytes (64 hex chars), got %d bytes", len(encKey))
 	}
 
-	pollInterval := 30 * time.Minute
+	pollInterval := 2 * time.Minute
 	if v := os.Getenv("STATUS_POLL_INTERVAL"); v != "" {
 		parsed, err := time.ParseDuration(v)
 		if err != nil {
