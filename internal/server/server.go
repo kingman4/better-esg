@@ -65,6 +65,10 @@ type Server struct {
 	webhookWG sync.WaitGroup
 	// webhookSem limits concurrent webhook deliveries to prevent goroutine explosion.
 	webhookSem chan struct{}
+
+	// manualCheckTimes tracks last manual status check per submission for rate limiting.
+	// Key: submission ID (string), Value: time.Time.
+	manualCheckTimes sync.Map
 }
 
 // Config holds the parameters needed to create a Server.
@@ -327,6 +331,7 @@ func (s *Server) routes() {
 	s.router.HandleFunc("GET /dashboard/submissions/{id}", s.requireWebAuth(s.handleSubmissionDetail))
 	s.router.HandleFunc("GET /dashboard/submissions/{id}/status", s.requireWebAuth(s.handleSubmissionStatus))
 	s.router.HandleFunc("POST /dashboard/submissions/{id}/retry", s.requireWebAuth(s.handleRetrySubmission))
+	s.router.HandleFunc("POST /dashboard/submissions/{id}/check-status", s.requireWebAuth(s.handleCheckStatusNow))
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

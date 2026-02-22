@@ -66,6 +66,7 @@ type SubmissionDetailData struct {
 	CreatedAt     string
 	SubmittedAt   string
 	CompletedAt   string
+	CoreID        string         // FDA core_id (empty until submitted)
 	ErrorMessage  string         // latest workflow error (if failed)
 	WorkflowLog   []WorkflowStep // workflow state transitions
 }
