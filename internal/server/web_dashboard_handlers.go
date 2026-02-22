@@ -269,17 +269,33 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 
 	name := r.FormValue("name")
 	subType := r.FormValue("submission_type")
+	fdaCenter := r.FormValue("fda_center")
 
 	// Validate required fields
-	if name == "" || subType == "" {
+	if name == "" || subType == "" || fdaCenter == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		pages.CreateSubmissionPage(pages.CreateSubmissionData{
 			Env:       s.fdaEnvironment,
 			UserEmail: userEmail,
-			Error:     "Submission name and type are required",
+			Error:     "Submission name, FDA center, and type are required",
 			Name:      name,
 			Type:      subType,
-			FDACenter: r.FormValue("fda_center"),
+			FDACenter: fdaCenter,
+			Desc:      r.FormValue("description"),
+		}).Render(r.Context(), w)
+		return
+	}
+
+	// Validate center/type combination against FDA spec
+	if !IsValidCenterType(fdaCenter, subType) {
+		w.WriteHeader(http.StatusBadRequest)
+		pages.CreateSubmissionPage(pages.CreateSubmissionData{
+			Env:       s.fdaEnvironment,
+			UserEmail: userEmail,
+			Error:     "Invalid FDA center / submission type combination",
+			Name:      name,
+			Type:      subType,
+			FDACenter: fdaCenter,
 			Desc:      r.FormValue("description"),
 		}).Render(r.Context(), w)
 		return
@@ -295,7 +311,7 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 			Error:     "At least one file is required",
 			Name:      name,
 			Type:      subType,
-			FDACenter: r.FormValue("fda_center"),
+			FDACenter: fdaCenter,
 			Desc:      r.FormValue("description"),
 		}).Render(r.Context(), w)
 		return
@@ -304,7 +320,7 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 	// Create submission — file_count auto-calculated, protocol defaults to "API"
 	sub, err := s.submissions.Create(r.Context(), repository.CreateSubmissionParams{
 		OrgID:              orgID,
-		FDACenter:          r.FormValue("fda_center"),
+		FDACenter:          fdaCenter,
 		SubmissionType:     subType,
 		SubmissionName:     name,
 		SubmissionProtocol: "API",
@@ -321,7 +337,7 @@ func (s *Server) handleWebCreateSubmission(w http.ResponseWriter, r *http.Reques
 			Error:     "Failed to create submission",
 			Name:      name,
 			Type:      subType,
-			FDACenter: r.FormValue("fda_center"),
+			FDACenter: fdaCenter,
 			Desc:      r.FormValue("description"),
 		}).Render(r.Context(), w)
 		return

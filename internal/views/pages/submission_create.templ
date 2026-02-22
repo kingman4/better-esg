@@ -36,14 +36,14 @@ templ CreateSubmissionPage(data CreateSubmissionData) {
 						<option value="CBER" selected?={ data.FDACenter == "CBER" }>CBER — Center for Biologics Evaluation and Research</option>
 						<option value="CDER" selected?={ data.FDACenter == "CDER" }>CDER — Center for Drug Evaluation and Research</option>
 						<option value="CDRH" selected?={ data.FDACenter == "CDRH" }>CDRH — Center for Devices and Radiological Health</option>
-						<option value="CFSAN" selected?={ data.FDACenter == "CFSAN" }>CFSAN (HFP) — Center for Food Safety and Applied Nutrition</option>
+						<option value="HFP" selected?={ data.FDACenter == "HFP" }>HFP — Center for Food Safety and Applied Nutrition</option>
 						<option value="CTP" selected?={ data.FDACenter == "CTP" }>CTP — Center for Tobacco Products</option>
 						<option value="CVM" selected?={ data.FDACenter == "CVM" }>CVM — Center for Veterinary Medicine</option>
 						<option value="OC" selected?={ data.FDACenter == "OC" }>OC — Office of the Commissioner</option>
 						<option value="OII" selected?={ data.FDACenter == "OII" }>OII — Office of International Programs</option>
 						<option value="OOPD" selected?={ data.FDACenter == "OOPD" }>OOPD — Office of Orphan Products Development</option>
 						<option value="OPQ" selected?={ data.FDACenter == "OPQ" }>OPQ — Office of Pharmaceutical Quality</option>
-						<option value="HealthCanada" selected?={ data.FDACenter == "HealthCanada" }>Health Canada</option>
+						<option value="Health Canada" selected?={ data.FDACenter == "Health Canada" }>Health Canada</option>
 					</select>
 				</div>
 
@@ -87,19 +87,19 @@ templ CreateSubmissionPage(data CreateSubmissionData) {
 						<option value="Adverse Events" data-centers="CDRH,CTP" selected?={ data.Type == "Adverse Events" }>Adverse Events</option>
 						<option value="Electronic_Submissions" data-centers="CDRH" selected?={ data.Type == "Electronic_Submissions" }>Electronic_Submissions</option>
 						<option value="GUDID" data-centers="CDRH" selected?={ data.Type == "GUDID" }>GUDID — Global Unique Device Identification Database</option>
-						<!-- CFSAN (HFP) -->
-						<option value="DSR_Adverse_Events" data-centers="CFSAN" selected?={ data.Type == "DSR_Adverse_Events" }>DSR_Adverse_Events</option>
-						<option value="EON-Payload-Files" data-centers="CFSAN" selected?={ data.Type == "EON-Payload-Files" }>EON-Payload-Files</option>
-						<option value="Food_Pilot_Listing" data-centers="CFSAN" selected?={ data.Type == "Food_Pilot_Listing" }>Food_Pilot_Listing</option>
-						<option value="Form3479" data-centers="CFSAN" selected?={ data.Type == "Form3479" }>Form3479</option>
-						<option value="Form3480" data-centers="CFSAN" selected?={ data.Type == "Form3480" }>Form3480</option>
-						<option value="Form3480A" data-centers="CFSAN" selected?={ data.Type == "Form3480A" }>Form3480A</option>
-						<option value="Form3503" data-centers="CFSAN" selected?={ data.Type == "Form3503" }>Form3503</option>
-						<option value="Form3665" data-centers="CFSAN" selected?={ data.Type == "Form3665" }>Form3665</option>
-						<option value="Form3666" data-centers="CFSAN" selected?={ data.Type == "Form3666" }>Form3666</option>
-						<option value="Form3667" data-centers="CFSAN" selected?={ data.Type == "Form3667" }>Form3667</option>
-						<option value="NDI" data-centers="CFSAN" selected?={ data.Type == "NDI" }>NDI — New Dietary Ingredient</option>
-						<option value="Threshold_of_Regulation" data-centers="CFSAN" selected?={ data.Type == "Threshold_of_Regulation" }>Threshold_of_Regulation</option>
+						<!-- HFP (formerly CFSAN) -->
+						<option value="DSR_Adverse_Events" data-centers="HFP" selected?={ data.Type == "DSR_Adverse_Events" }>DSR_Adverse_Events</option>
+						<option value="EON-Payload-Files" data-centers="HFP" selected?={ data.Type == "EON-Payload-Files" }>EON-Payload-Files</option>
+						<option value="Food_Pilot_Listing" data-centers="HFP" selected?={ data.Type == "Food_Pilot_Listing" }>Food_Pilot_Listing</option>
+						<option value="Form3479" data-centers="HFP" selected?={ data.Type == "Form3479" }>Form3479</option>
+						<option value="Form3480" data-centers="HFP" selected?={ data.Type == "Form3480" }>Form3480</option>
+						<option value="Form3480A" data-centers="HFP" selected?={ data.Type == "Form3480A" }>Form3480A</option>
+						<option value="Form3503" data-centers="HFP" selected?={ data.Type == "Form3503" }>Form3503</option>
+						<option value="Form3665" data-centers="HFP" selected?={ data.Type == "Form3665" }>Form3665</option>
+						<option value="Form3666" data-centers="HFP" selected?={ data.Type == "Form3666" }>Form3666</option>
+						<option value="Form3667" data-centers="HFP" selected?={ data.Type == "Form3667" }>Form3667</option>
+						<option value="NDI" data-centers="HFP" selected?={ data.Type == "NDI" }>NDI — New Dietary Ingredient</option>
+						<option value="Threshold_of_Regulation" data-centers="HFP" selected?={ data.Type == "Threshold_of_Regulation" }>Threshold_of_Regulation</option>
 						<!-- CTP -->
 						<option value="Electronic_Submission" data-centers="CTP" selected?={ data.Type == "Electronic_Submission" }>Electronic_Submission</option>
 						<!-- CVM -->
@@ -117,7 +117,7 @@ templ CreateSubmissionPage(data CreateSubmissionData) {
 						<!-- OPQ -->
 						<option value="7044a4_Pharma_Inspection_Records" data-centers="OPQ" selected?={ data.Type == "7044a4_Pharma_Inspection_Records" }>7044a4_Pharma_Inspection_Records</option>
 						<!-- Health Canada -->
-						<option value="Transaction" data-centers="HealthCanada" selected?={ data.Type == "Transaction" }>Transaction</option>
+						<option value="Transaction" data-centers="Health Canada" selected?={ data.Type == "Transaction" }>Transaction</option>
 					</select>
 				</div>
 				<script>
@@ -125,47 +125,56 @@ templ CreateSubmissionPage(data CreateSubmissionData) {
 					var centerSelect = document.getElementById('fda_center');
 					var typeSelect = document.getElementById('submission_type');
 					var hint = document.getElementById('type-hint');
-					var typeOptions = typeSelect.querySelectorAll('option[data-centers]');
+
+					// Clone all type options on load so we can rebuild the select each time.
+					var allOptions = [];
+					typeSelect.querySelectorAll('option[data-centers]').forEach(function(opt) {
+						allOptions.push({
+							value: opt.value,
+							text: opt.textContent,
+							centers: opt.getAttribute('data-centers').split(',')
+						});
+					});
+
+					// Keep a reference to the placeholder option.
+					var placeholder = typeSelect.querySelector('option[value=""]');
 
 					function filterTypes() {
 						var selectedCenter = centerSelect.value;
-						var visibleCount = 0;
-						var lastVisible = null;
-						var currentValid = false;
+						var currentValue = typeSelect.value;
 
-						typeOptions.forEach(function(opt) {
-							var centers = opt.getAttribute('data-centers').split(',');
-							if (!selectedCenter || centers.indexOf(selectedCenter) !== -1) {
-								opt.hidden = false;
-								opt.disabled = false;
-								visibleCount++;
-								lastVisible = opt;
-								if (opt.value === typeSelect.value) currentValid = true;
-							} else {
-								opt.hidden = true;
-								opt.disabled = true;
+						// Remove all type options (keep placeholder).
+						while (typeSelect.lastChild !== placeholder) {
+							typeSelect.removeChild(typeSelect.lastChild);
+						}
+
+						var matched = [];
+						allOptions.forEach(function(o) {
+							if (!selectedCenter || o.centers.indexOf(selectedCenter) !== -1) {
+								var el = document.createElement('option');
+								el.value = o.value;
+								el.textContent = o.text;
+								typeSelect.appendChild(el);
+								matched.push(o);
 							}
 						});
 
-						if (!currentValid) {
+						// Restore previous selection if still valid, otherwise reset.
+						var stillValid = matched.some(function(o) { return o.value === currentValue; });
+						if (stillValid) {
+							typeSelect.value = currentValue;
+						} else if (matched.length === 1) {
+							typeSelect.value = matched[0].value;
+						} else {
 							typeSelect.value = '';
 						}
 
-						// Auto-select if only one valid type
-						if (visibleCount === 1 && lastVisible) {
-							typeSelect.value = lastVisible.value;
-						}
-
-						// Update hint text
-						if (!selectedCenter) {
-							hint.textContent = 'Select a center first to see valid submission types.';
-						} else {
-							hint.textContent = '';
-						}
+						// Update hint text.
+						hint.textContent = selectedCenter ? '' : 'Select a center first to see valid submission types.';
 					}
 
 					centerSelect.addEventListener('change', filterTypes);
-					// Run on page load in case center is pre-selected (e.g. validation error re-render)
+					// Run on page load in case center is pre-selected (e.g. validation error re-render).
 					filterTypes();
 				})();
 				</script>
