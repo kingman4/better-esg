@@ -68,130 +68,690 @@ func CreateSubmissionPage(data CreateSubmissionData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\" placeholder=\"e.g. Q1 2026 Safety Report\"></div><div><label for=\"submission_type\" class=\"block text-sm font-medium text-gray-700\">Submission Type <span class=\"text-red-500\">*</span></label> <select id=\"submission_type\" name=\"submission_type\" required class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\"><option value=\"\" disabled")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\" placeholder=\"e.g. Q1 2026 Safety Report\"></div><div><label for=\"fda_center\" class=\"block text-sm font-medium text-gray-700\">FDA Center <span class=\"text-red-500\">*</span></label> <select id=\"fda_center\" name=\"fda_center\" required class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\"><option value=\"\" disabled")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "" {
+			if data.FDACenter == "" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, ">-- Select a type --</option> <option value=\"NDA\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, ">-- Select a center --</option> <option value=\"CBER\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "NDA" {
+			if data.FDACenter == "CBER" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, ">NDA — New Drug Application</option> <option value=\"ANDA\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, ">CBER — Center for Biologics Evaluation and Research</option> <option value=\"CDER\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "ANDA" {
+			if data.FDACenter == "CDER" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, ">ANDA — Abbreviated New Drug Application (Generic)</option> <option value=\"IND\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, ">CDER — Center for Drug Evaluation and Research</option> <option value=\"CDRH\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "IND" {
+			if data.FDACenter == "CDRH" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, ">IND — Investigational New Drug</option> <option value=\"BLA\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, ">CDRH — Center for Devices and Radiological Health</option> <option value=\"HFP\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "BLA" {
+			if data.FDACenter == "HFP" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, ">BLA — Biologics License Application</option> <option value=\"DMF\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, ">HFP — Center for Food Safety and Applied Nutrition</option> <option value=\"CTP\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "DMF" {
+			if data.FDACenter == "CTP" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, ">DMF — Drug Master File</option> <option value=\"510K\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, ">CTP — Center for Tobacco Products</option> <option value=\"CVM\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "510K" {
+			if data.FDACenter == "CVM" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, ">510K — Premarket Notification (Medical Devices)</option> <option value=\"EUA\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, ">CVM — Center for Veterinary Medicine</option> <option value=\"OC\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.Type == "EUA" {
+			if data.FDACenter == "OC" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">EUA — Emergency Use Authorization</option></select></div><div><label for=\"fda_center\" class=\"block text-sm font-medium text-gray-700\">FDA Center <span class=\"text-red-500\">*</span></label><p id=\"center-hint\" class=\"mt-1 text-xs text-gray-500\">Select a submission type first to see valid centers.</p><select id=\"fda_center\" name=\"fda_center\" required class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\"><option value=\"\" disabled")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">OC — Office of the Commissioner</option> <option value=\"OII\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.FDACenter == "" {
+			if data.FDACenter == "OII" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, ">-- Select a center --</option> <option value=\"CDER\" data-types=\"NDA,ANDA,IND,DMF\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, ">OII — Office of International Programs</option> <option value=\"OOPD\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.FDACenter == "CDER" {
+			if data.FDACenter == "OOPD" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ">CDER — Center for Drug Evaluation and Research</option> <option value=\"CBER\" data-types=\"BLA,510K,EUA\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ">OOPD — Office of Orphan Products Development</option> <option value=\"OPQ\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if data.FDACenter == "CBER" {
+			if data.FDACenter == "OPQ" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, ">CBER — Center for Biologics Evaluation and Research</option></select></div><script>\n\t\t\t\t(function() {\n\t\t\t\t\tvar typeSelect = document.getElementById('submission_type');\n\t\t\t\t\tvar centerSelect = document.getElementById('fda_center');\n\t\t\t\t\tvar hint = document.getElementById('center-hint');\n\t\t\t\t\tvar centerOptions = centerSelect.querySelectorAll('option[data-types]');\n\n\t\t\t\t\tfunction filterCenters() {\n\t\t\t\t\t\tvar selectedType = typeSelect.value;\n\t\t\t\t\t\tvar visibleCount = 0;\n\t\t\t\t\t\tvar lastVisible = null;\n\n\t\t\t\t\t\t// Reset to placeholder if current selection is no longer valid\n\t\t\t\t\t\tvar currentValid = false;\n\n\t\t\t\t\t\tcenterOptions.forEach(function(opt) {\n\t\t\t\t\t\t\tvar types = opt.getAttribute('data-types').split(',');\n\t\t\t\t\t\t\tif (!selectedType || types.indexOf(selectedType) !== -1) {\n\t\t\t\t\t\t\t\topt.hidden = false;\n\t\t\t\t\t\t\t\topt.disabled = false;\n\t\t\t\t\t\t\t\tvisibleCount++;\n\t\t\t\t\t\t\t\tlastVisible = opt;\n\t\t\t\t\t\t\t\tif (opt.value === centerSelect.value) currentValid = true;\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\topt.hidden = true;\n\t\t\t\t\t\t\t\topt.disabled = true;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t});\n\n\t\t\t\t\t\tif (!currentValid) {\n\t\t\t\t\t\t\tcenterSelect.value = '';\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\t// Auto-select if only one valid center\n\t\t\t\t\t\tif (visibleCount === 1 && lastVisible) {\n\t\t\t\t\t\t\tcenterSelect.value = lastVisible.value;\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\t// Update hint text\n\t\t\t\t\t\tif (!selectedType) {\n\t\t\t\t\t\t\thint.textContent = 'Select a submission type first to see valid centers.';\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\thint.textContent = '';\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\ttypeSelect.addEventListener('change', filterCenters);\n\t\t\t\t\t// Run on page load in case type is pre-selected (e.g. validation error re-render)\n\t\t\t\t\tfilterCenters();\n\t\t\t\t})();\n\t\t\t\t</script><div><label for=\"description\" class=\"block text-sm font-medium text-gray-700\">Description <span class=\"text-gray-400 text-xs font-normal\">(optional)</span></label> <textarea id=\"description\" name=\"description\" rows=\"3\" class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\" placeholder=\"Brief description of this submission\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, ">OPQ — Office of Pharmaceutical Quality</option> <option value=\"Health Canada\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.FDACenter == "Health Canada" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, ">Health Canada</option></select></div><div><label for=\"submission_type\" class=\"block text-sm font-medium text-gray-700\">Submission Type <span class=\"text-red-500\">*</span></label><p id=\"type-hint\" class=\"mt-1 text-xs text-gray-500\">Select a center first to see valid submission types.</p><select id=\"submission_type\" name=\"submission_type\" required class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\"><option value=\"\" disabled")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, ">-- Select a type --</option><!-- CBER --><option value=\"510K\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "510K" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, ">510K</option> <option value=\"AERS\" data-centers=\"CBER,CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "AERS" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, ">AERS</option> <option value=\"AERS Attachments\" data-centers=\"CBER,CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "AERS Attachments" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, ">AERS Attachments</option> <option value=\"AERS_PREMKT_CBER\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "AERS_PREMKT_CBER" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, ">AERS_PREMKT_CBER</option> <option value=\"EBLA\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "EBLA" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, ">EBLA — Electronic Biologics License Application</option> <option value=\"eDMF\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "eDMF" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, ">eDMF — Electronic Drug Master File</option> <option value=\"EIDE\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "EIDE" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, ">EIDE — Electronic Investigational Device Exemption</option> <option value=\"EIND\" data-centers=\"CBER,CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "EIND" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, ">EIND — Electronic Investigational New Drug</option> <option value=\"EUA\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "EUA" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, ">EUA — Emergency Use Authorization</option> <option value=\"Lot_Release_Protocol\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Lot_Release_Protocol" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, ">Lot_Release_Protocol</option> <option value=\"NDA\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "NDA" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, ">NDA — New Drug Application</option> <option value=\"PMA\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "PMA" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, ">PMA — Premarket Approval</option> <option value=\"Pre_IND\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Pre_IND" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, ">Pre_IND — Pre-Investigational New Drug</option> <option value=\"Promotional_Materials\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Promotional_Materials" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, ">Promotional_Materials</option> <option value=\"QSUBS\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "QSUBS" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, ">QSUBS — Q-Submissions</option> <option value=\"SEND_PILOT\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "SEND_PILOT" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, ">SEND_PILOT</option> <option value=\"SPL_LDD\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "SPL_LDD" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, ">SPL_LDD — Structured Product Labeling</option> <option value=\"VAERS\" data-centers=\"CBER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "VAERS" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, ">VAERS — Vaccine Adverse Event Reporting</option><!-- CDER --><option value=\"ACA6004_Drug_Samples\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "ACA6004_Drug_Samples" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, ">ACA6004_Drug_Samples</option> <option value=\"AERS_PREMKT_CDER\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "AERS_PREMKT_CDER" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, ">AERS_PREMKT_CDER</option> <option value=\"ECTD\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "ECTD" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, ">ECTD — Electronic Common Technical Document</option> <option value=\"ECTD WAIVED\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "ECTD WAIVED" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, ">ECTD WAIVED</option> <option value=\"EDMF_TYPEIII\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "EDMF_TYPEIII" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, ">EDMF_TYPEIII — Electronic Drug Master File Type III</option> <option value=\"FFU-PILOT\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "FFU-PILOT" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, ">FFU-PILOT</option> <option value=\"GDUFA_Facility_Registration\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "GDUFA_Facility_Registration" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, ">GDUFA_Facility_Registration</option> <option value=\"PFC\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "PFC" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, ">PFC</option> <option value=\"POR Large Molecule Documents\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "POR Large Molecule Documents" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, ">POR Large Molecule Documents</option> <option value=\"Voluntary_Direct_Aes\" data-centers=\"CDER\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Voluntary_Direct_Aes" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, ">Voluntary_Direct_Aes</option><!-- CDRH --><option value=\"Adverse Events\" data-centers=\"CDRH,CTP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Adverse Events" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, ">Adverse Events</option> <option value=\"Electronic_Submissions\" data-centers=\"CDRH\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Electronic_Submissions" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, ">Electronic_Submissions</option> <option value=\"GUDID\" data-centers=\"CDRH\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "GUDID" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, ">GUDID — Global Unique Device Identification Database</option><!-- HFP (formerly CFSAN) --><option value=\"DSR_Adverse_Events\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "DSR_Adverse_Events" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, ">DSR_Adverse_Events</option> <option value=\"EON-Payload-Files\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "EON-Payload-Files" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, ">EON-Payload-Files</option> <option value=\"Food_Pilot_Listing\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Food_Pilot_Listing" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, ">Food_Pilot_Listing</option> <option value=\"Form3479\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Form3479" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, ">Form3479</option> <option value=\"Form3480\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Form3480" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, ">Form3480</option> <option value=\"Form3480A\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Form3480A" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, ">Form3480A</option> <option value=\"Form3503\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Form3503" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, ">Form3503</option> <option value=\"Form3665\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Form3665" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, ">Form3665</option> <option value=\"Form3666\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Form3666" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, ">Form3666</option> <option value=\"Form3667\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Form3667" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, ">Form3667</option> <option value=\"NDI\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "NDI" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, ">NDI — New Dietary Ingredient</option> <option value=\"Threshold_of_Regulation\" data-centers=\"HFP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Threshold_of_Regulation" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, ">Threshold_of_Regulation</option><!-- CTP --><option value=\"Electronic_Submission\" data-centers=\"CTP\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Electronic_Submission" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, ">Electronic_Submission</option><!-- CVM --><option value=\"Adverse_Events_Reports\" data-centers=\"CVM\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Adverse_Events_Reports" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, ">Adverse_Events_Reports</option> <option value=\"eSubmitter\" data-centers=\"CVM\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "eSubmitter" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, ">eSubmitter</option><!-- OC --><option value=\"SPL\" data-centers=\"OC\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "SPL" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 122, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 123, ">SPL — Structured Product Labeling</option> <option value=\"OCAC\" data-centers=\"OC\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "OCAC" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 124, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 125, ">OCAC</option><!-- OII --><option value=\"Document_Requests\" data-centers=\"OII\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Document_Requests" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, ">Document_Requests</option> <option value=\"POR Small Molecule Documents\" data-centers=\"OII,OPQ\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "POR Small Molecule Documents" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, ">POR Small Molecule Documents</option><!-- OOPD --><option value=\"HUD_Designation_Requests\" data-centers=\"OOPD\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "HUD_Designation_Requests" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, ">HUD_Designation_Requests</option> <option value=\"Orphan_drug_Designation_Requests\" data-centers=\"OOPD\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Orphan_drug_Designation_Requests" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, ">Orphan_drug_Designation_Requests</option><!-- OPQ --><option value=\"7044a4_Pharma_Inspection_Records\" data-centers=\"OPQ\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "7044a4_Pharma_Inspection_Records" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, ">7044a4_Pharma_Inspection_Records</option><!-- Health Canada --><option value=\"Transaction\" data-centers=\"Health Canada\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if data.Type == "Transaction" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, ">Transaction</option></select></div><script>\n\t\t\t\t(function() {\n\t\t\t\t\tvar centerSelect = document.getElementById('fda_center');\n\t\t\t\t\tvar typeSelect = document.getElementById('submission_type');\n\t\t\t\t\tvar hint = document.getElementById('type-hint');\n\n\t\t\t\t\t// Clone all type options on load so we can rebuild the select each time.\n\t\t\t\t\tvar allOptions = [];\n\t\t\t\t\ttypeSelect.querySelectorAll('option[data-centers]').forEach(function(opt) {\n\t\t\t\t\t\tallOptions.push({\n\t\t\t\t\t\t\tvalue: opt.value,\n\t\t\t\t\t\t\ttext: opt.textContent,\n\t\t\t\t\t\t\tcenters: opt.getAttribute('data-centers').split(',')\n\t\t\t\t\t\t});\n\t\t\t\t\t});\n\n\t\t\t\t\t// Keep a reference to the placeholder option.\n\t\t\t\t\tvar placeholder = typeSelect.querySelector('option[value=\"\"]');\n\n\t\t\t\t\tfunction filterTypes() {\n\t\t\t\t\t\tvar selectedCenter = centerSelect.value;\n\t\t\t\t\t\tvar currentValue = typeSelect.value;\n\n\t\t\t\t\t\t// Remove all type options (keep placeholder).\n\t\t\t\t\t\twhile (typeSelect.lastChild !== placeholder) {\n\t\t\t\t\t\t\ttypeSelect.removeChild(typeSelect.lastChild);\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\tvar matched = [];\n\t\t\t\t\t\tallOptions.forEach(function(o) {\n\t\t\t\t\t\t\tif (!selectedCenter || o.centers.indexOf(selectedCenter) !== -1) {\n\t\t\t\t\t\t\t\tvar el = document.createElement('option');\n\t\t\t\t\t\t\t\tel.value = o.value;\n\t\t\t\t\t\t\t\tel.textContent = o.text;\n\t\t\t\t\t\t\t\ttypeSelect.appendChild(el);\n\t\t\t\t\t\t\t\tmatched.push(o);\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t});\n\n\t\t\t\t\t\t// Restore previous selection if still valid, otherwise reset.\n\t\t\t\t\t\tvar stillValid = matched.some(function(o) { return o.value === currentValue; });\n\t\t\t\t\t\tif (stillValid) {\n\t\t\t\t\t\t\ttypeSelect.value = currentValue;\n\t\t\t\t\t\t} else if (matched.length === 1) {\n\t\t\t\t\t\t\ttypeSelect.value = matched[0].value;\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\ttypeSelect.value = '';\n\t\t\t\t\t\t}\n\n\t\t\t\t\t\t// Update hint text.\n\t\t\t\t\t\thint.textContent = selectedCenter ? '' : 'Select a center first to see valid submission types.';\n\t\t\t\t\t}\n\n\t\t\t\t\tcenterSelect.addEventListener('change', filterTypes);\n\t\t\t\t\t// Run on page load in case center is pre-selected (e.g. validation error re-render).\n\t\t\t\t\tfilterTypes();\n\t\t\t\t})();\n\t\t\t\t</script><div><label for=\"description\" class=\"block text-sm font-medium text-gray-700\">Description <span class=\"text-gray-400 text-xs font-normal\">(optional)</span></label> <textarea id=\"description\" name=\"description\" rows=\"3\" class=\"mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 border\" placeholder=\"Brief description of this submission\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(data.Desc)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/views/pages/submission_create.templ`, Line: 112, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/views/pages/submission_create.templ`, Line: 186, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</textarea></div><div><label for=\"files\" class=\"block text-sm font-medium text-gray-700\">Files <span class=\"text-red-500\">*</span></label><p class=\"mt-1 text-xs text-gray-500\">Select one or more files to include in this submission.</p><input id=\"files\" name=\"files\" type=\"file\" multiple required class=\"mt-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100\"></div><div class=\"flex justify-end space-x-3 pt-4 border-t border-gray-200\"><a href=\"/dashboard/submissions\" class=\"px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50\">Cancel</a> <button type=\"submit\" class=\"px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500\">Create Submission</button></div></form></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</textarea></div><div><label for=\"files\" class=\"block text-sm font-medium text-gray-700\">Files <span class=\"text-red-500\">*</span></label><p class=\"mt-1 text-xs text-gray-500\">Select one or more files to include in this submission.</p><input id=\"files\" name=\"files\" type=\"file\" multiple required class=\"mt-2 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100\"></div><div class=\"flex justify-end space-x-3 pt-4 border-t border-gray-200\"><a href=\"/dashboard/submissions\" class=\"px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50\">Cancel</a> <button type=\"submit\" class=\"px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500\">Create Submission</button></div></form></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
