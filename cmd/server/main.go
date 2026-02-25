@@ -44,6 +44,7 @@ func main() {
 		S3Endpoint:         cfg.S3Endpoint,
 		JWTSecret:          cfg.JWTSecret,
 		AuthDisabled:       cfg.AuthDisabled,
+		FDADebug:           cfg.FDADebug,
 		StaticFS:           mustSubFS(web.StaticFS, "static"),
 	})
 	if err != nil {

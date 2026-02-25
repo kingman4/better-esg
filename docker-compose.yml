@@ -19,6 +19,7 @@ services:
       - FDA_USER_EMAIL=${FDA_USER_EMAIL}
       - FDA_ENVIRONMENT=${FDA_ENVIRONMENT:-test}
       - AUTH_DISABLED=true
+      - FDA_DEBUG=${FDA_DEBUG:-false}
     depends_on:
       postgres:
         condition: service_healthy
