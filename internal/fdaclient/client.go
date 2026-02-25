@@ -605,8 +605,7 @@ func (c *Client) GetSubmissionStatus(ctx context.Context, coreID string) (*Submi
 		if err != nil {
 			return &permanentError{err: fmt.Errorf("creating status request: %w", err)}
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("accesstoken", token)
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {

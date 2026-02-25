@@ -1150,8 +1150,8 @@ func TestGetSubmissionStatus_Success(t *testing.T) {
 	}
 }
 
-func TestGetSubmissionStatus_SendsCorrectHeaders(t *testing.T) {
-	var receivedAuth, receivedContentType string
+func TestGetSubmissionStatus_SendsAccessTokenHeader(t *testing.T) {
+	var receivedAccessToken string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/as/token.oauth2" {
 			w.Header().Set("Content-Type", "application/json")
@@ -1160,8 +1160,7 @@ func TestGetSubmissionStatus_SendsCorrectHeaders(t *testing.T) {
 			})
 			return
 		}
-		receivedAuth = r.Header.Get("Authorization")
-		receivedContentType = r.Header.Get("Content-Type")
+		receivedAccessToken = r.Header.Get("accesstoken")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"core_id": "C1", "status": "PENDING", "esgngcode": "ESGNG200",
@@ -1181,11 +1180,8 @@ func TestGetSubmissionStatus_SendsCorrectHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if receivedAuth != "Bearer my-tok" {
-		t.Errorf("Authorization: expected 'Bearer my-tok', got %q", receivedAuth)
-	}
-	if receivedContentType != "application/json" {
-		t.Errorf("Content-Type: expected 'application/json', got %q", receivedContentType)
+	if receivedAccessToken != "my-tok" {
+		t.Errorf("accesstoken header: expected 'my-tok', got %q", receivedAccessToken)
 	}
 }
 
