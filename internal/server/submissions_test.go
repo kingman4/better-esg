@@ -62,7 +62,9 @@ func TestMain(m *testing.M) {
 			"POSTGRES_PASSWORD": "test",
 			"POSTGRES_DB":       "test",
 		},
-		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
+		WaitingFor: wait.ForLog("database system is ready to accept connections").
+			WithOccurrence(2).
+			WithStartupTimeout(30 * time.Second),
 	}
 
 	var err error
