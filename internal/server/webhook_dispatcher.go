@@ -167,7 +167,9 @@ func sendWebhookRequest(ctx context.Context, client *http.Client, url string, bo
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Webhook-Signature", "sha256="+signature)
 	// Parse the event ID from the payload for the header
-	var p struct{ ID string `json:"id"` }
+	var p struct {
+		ID string `json:"id"`
+	}
 	json.Unmarshal(body, &p)
 	req.Header.Set("X-Webhook-ID", p.ID)
 	req.Header.Set("X-Webhook-Timestamp", time.Now().UTC().Format(time.RFC3339))

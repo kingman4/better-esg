@@ -31,7 +31,7 @@ type LogDeliveryParams struct {
 	ResponseBody string // truncated response body
 	Error        string // empty on success
 	Attempt      int
-	Delivered    bool   // true if 2xx response
+	Delivered    bool // true if 2xx response
 }
 
 // WebhookDeliveryRepo handles database operations for webhook delivery logs.

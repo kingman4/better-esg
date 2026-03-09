@@ -193,15 +193,15 @@ func TestSlugRegex(t *testing.T) {
 	}
 	invalid := []string{
 		"",
-		"ab",         // too short
-		"A",          // uppercase
-		"My-Org",     // uppercase
-		"-start",     // starts with hyphen
-		"end-",       // ends with hyphen
-		"has space",  // space
-		"has_under",  // underscore
-		"has.dot",    // dot
-		"a",          // single char
+		"ab",        // too short
+		"A",         // uppercase
+		"My-Org",    // uppercase
+		"-start",    // starts with hyphen
+		"end-",      // ends with hyphen
+		"has space", // space
+		"has_under", // underscore
+		"has.dot",   // dot
+		"a",         // single char
 	}
 
 	for _, s := range valid {

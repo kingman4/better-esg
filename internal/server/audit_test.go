@@ -173,11 +173,11 @@ func TestToAuditLogResponse(t *testing.T) {
 // TestToAuditLogResponse_NullFields verifies that null DB fields produce nil JSON pointers.
 func TestToAuditLogResponse_NullFields(t *testing.T) {
 	entry := &repository.AuditLogEntry{
-		ID:          1,
-		OrgID:       "org-1",
-		Action:      "receive_acknowledgement",
-		EntityType:  "acknowledgement",
-		CreatedAt:   time.Now(),
+		ID:         1,
+		OrgID:      "org-1",
+		Action:     "receive_acknowledgement",
+		EntityType: "acknowledgement",
+		CreatedAt:  time.Now(),
 		// All nullable fields left as zero-value (Valid: false)
 	}
 

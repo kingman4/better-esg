@@ -90,4 +90,3 @@ func (s *LocalStore) Delete(_ context.Context, key string) error {
 	}
 	return nil
 }
-

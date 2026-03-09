@@ -23,18 +23,18 @@ import (
 
 // Server is the HTTP server that handles API requests.
 type Server struct {
-	db            *sql.DB
-	router        *http.ServeMux
-	submissions   *repository.SubmissionRepo
-	files         *repository.SubmissionFileRepo
-	apiKeys       *repository.APIKeyRepo
-	users         *repository.UserRepo
-	orgs          *repository.OrgRepo
-	refreshTokens *repository.RefreshTokenRepo
-	acks          *repository.AckRepo
-	workflowLog   *repository.WorkflowLogRepo
-	auditLog      *repository.AuditLogRepo
-	webhooks      *repository.WebhookRepo
+	db                *sql.DB
+	router            *http.ServeMux
+	submissions       *repository.SubmissionRepo
+	files             *repository.SubmissionFileRepo
+	apiKeys           *repository.APIKeyRepo
+	users             *repository.UserRepo
+	orgs              *repository.OrgRepo
+	refreshTokens     *repository.RefreshTokenRepo
+	acks              *repository.AckRepo
+	workflowLog       *repository.WorkflowLogRepo
+	auditLog          *repository.AuditLogRepo
+	webhooks          *repository.WebhookRepo
 	deliveries        *repository.WebhookDeliveryRepo
 	uploadSessions    *repository.UploadSessionRepo
 	backupCodes       *repository.BackupCodeRepo
@@ -43,9 +43,9 @@ type Server struct {
 	storage           storage.Store
 	staticFS          fs.FS
 	logger            *slog.Logger
-	fda           *fdaclient.Client
-	fdaUserEmail  string // for auto-resolving user_id + company_id via GetCompanyInfo
-	jwtSecret     string // HS256 signing key for JWT tokens
+	fda               *fdaclient.Client
+	fdaUserEmail      string // for auto-resolving user_id + company_id via GetCompanyInfo
+	jwtSecret         string // HS256 signing key for JWT tokens
 
 	// MFA temp secrets: holds unconfirmed TOTP secrets between setup and confirm calls.
 	// Key: userID (string), Value: tempMFASecret.
@@ -157,19 +157,19 @@ func New(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		db:            db,
-		router:        http.NewServeMux(),
-		webhookSem:    make(chan struct{}, 10), // max 10 concurrent webhook deliveries
-		submissions:   repository.NewSubmissionRepo(db, cfg.EncryptionKey),
-		files:         repository.NewSubmissionFileRepo(db),
-		apiKeys:       repository.NewAPIKeyRepo(db),
-		users:         repository.NewUserRepo(db),
-		orgs:          repository.NewOrgRepo(db),
-		refreshTokens: repository.NewRefreshTokenRepo(db),
-		acks:          repository.NewAckRepo(db),
-		workflowLog:   repository.NewWorkflowLogRepo(db),
-		auditLog:      repository.NewAuditLogRepo(db),
-		webhooks:      repository.NewWebhookRepo(db),
+		db:                db,
+		router:            http.NewServeMux(),
+		webhookSem:        make(chan struct{}, 10), // max 10 concurrent webhook deliveries
+		submissions:       repository.NewSubmissionRepo(db, cfg.EncryptionKey),
+		files:             repository.NewSubmissionFileRepo(db),
+		apiKeys:           repository.NewAPIKeyRepo(db),
+		users:             repository.NewUserRepo(db),
+		orgs:              repository.NewOrgRepo(db),
+		refreshTokens:     repository.NewRefreshTokenRepo(db),
+		acks:              repository.NewAckRepo(db),
+		workflowLog:       repository.NewWorkflowLogRepo(db),
+		auditLog:          repository.NewAuditLogRepo(db),
+		webhooks:          repository.NewWebhookRepo(db),
 		deliveries:        repository.NewWebhookDeliveryRepo(db),
 		uploadSessions:    repository.NewUploadSessionRepo(db),
 		backupCodes:       repository.NewBackupCodeRepo(db),
@@ -186,9 +186,9 @@ func New(cfg Config) (*Server, error) {
 		fdaUserEmail:   cfg.FDAUserEmail,
 		fdaEnvironment: cfg.FDAEnvironment,
 		storage:        store,
-		staticFS:     cfg.StaticFS,
-		jwtSecret:    cfg.JWTSecret,
-		logger:       logger,
+		staticFS:       cfg.StaticFS,
+		jwtSecret:      cfg.JWTSecret,
+		logger:         logger,
 	}
 	if cfg.AuthDisabled {
 		if err := s.initDefaultOrgUser(); err != nil {

@@ -213,4 +213,3 @@ func TestIssueWebSession_OpenRedirectPrevention(t *testing.T) {
 		})
 	}
 }
-

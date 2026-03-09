@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	minChunkSize = 1 << 20           // 1 MB
-	maxFileSize  = 1 << 40           // 1 TB
-	defaultChunk = 5 * (1 << 20)     // 5 MB
+	minChunkSize = 1 << 20       // 1 MB
+	maxFileSize  = 1 << 40       // 1 TB
+	defaultChunk = 5 * (1 << 20) // 5 MB
 )
 
 // --- Request / Response types ---

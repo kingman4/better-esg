@@ -8,7 +8,7 @@ import (
 type contextKey int
 
 const (
-	ctxOrgID  contextKey = iota
+	ctxOrgID contextKey = iota
 	ctxUserID
 	ctxRole
 )

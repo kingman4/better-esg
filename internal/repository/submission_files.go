@@ -9,18 +9,18 @@ import (
 
 // SubmissionFile represents a row in the submission_files table.
 type SubmissionFile struct {
-	ID              string
-	SubmissionID    string
-	FileName        string
-	FileSizeBytes   int64
-	SHA256Checksum  string
-	MimeType        sql.NullString
-	StoragePath     string
-	StorageBackend  string
-	UploadStatus    string
-	UploadedAt      sql.NullTime
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID             string
+	SubmissionID   string
+	FileName       string
+	FileSizeBytes  int64
+	SHA256Checksum string
+	MimeType       sql.NullString
+	StoragePath    string
+	StorageBackend string
+	UploadStatus   string
+	UploadedAt     sql.NullTime
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // CreateFileParams holds the fields needed to create a new submission file record.

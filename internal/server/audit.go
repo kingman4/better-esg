@@ -66,16 +66,16 @@ func (s *Server) auditSystem(ctx context.Context, orgID, action, entityType, ent
 // --- Audit log query endpoint ---
 
 type auditLogResponse struct {
-	ID          int64          `json:"id"`
-	OrgID       string         `json:"org_id"`
-	UserID      *string        `json:"user_id,omitempty"`
-	Action      string         `json:"action"`
-	EntityType  string         `json:"entity_type"`
-	EntityID    *string        `json:"entity_id,omitempty"`
-	RequestIP   *string        `json:"request_ip,omitempty"`
-	UserAgent   *string        `json:"user_agent,omitempty"`
-	Details     map[string]any `json:"details,omitempty"`
-	CreatedAt   string         `json:"created_at"`
+	ID         int64          `json:"id"`
+	OrgID      string         `json:"org_id"`
+	UserID     *string        `json:"user_id,omitempty"`
+	Action     string         `json:"action"`
+	EntityType string         `json:"entity_type"`
+	EntityID   *string        `json:"entity_id,omitempty"`
+	RequestIP  *string        `json:"request_ip,omitempty"`
+	UserAgent  *string        `json:"user_agent,omitempty"`
+	Details    map[string]any `json:"details,omitempty"`
+	CreatedAt  string         `json:"created_at"`
 }
 
 func toAuditLogResponse(e *repository.AuditLogEntry) auditLogResponse {

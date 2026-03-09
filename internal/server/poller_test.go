@@ -55,8 +55,8 @@ func TestListByWorkflowStates(t *testing.T) {
 
 	subSubmitted := createSub("sub-submitted-"+suffix, "submitted", "SUBMITTED", true)
 	subProcessing := createSub("sub-processing-"+suffix, "submitted", "PROCESSING", true)
-	_ = createSub("sub-accepted-"+suffix, "completed", "ACCEPTED", true)        // terminal — should NOT be returned
-	_ = createSub("sub-no-coreid-"+suffix, "submitted", "SUBMITTED", false)      // no core_id — should NOT be returned
+	_ = createSub("sub-accepted-"+suffix, "completed", "ACCEPTED", true)    // terminal — should NOT be returned
+	_ = createSub("sub-no-coreid-"+suffix, "submitted", "SUBMITTED", false) // no core_id — should NOT be returned
 
 	subs, err := srv.submissions.ListByWorkflowStates(ctx, []string{"SUBMITTED", "PROCESSING"})
 	require.NoError(t, err)

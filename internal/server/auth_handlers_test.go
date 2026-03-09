@@ -155,11 +155,11 @@ func TestLooksLikeJWT(t *testing.T) {
 		token string
 		want  bool
 	}{
-		{"eyJhbGciOiJIUzI1NiJ9.eyJ1aWQiOiIxIn0.sig", true},  // JWT format
-		{"abc.def.ghi", true},                                   // 2 dots = JWT
-		{"abc123def456", false},                                  // hex API key
-		{"abc.def", false},                                       // 1 dot
-		{"abc.def.ghi.jkl", false},                               // 3 dots
+		{"eyJhbGciOiJIUzI1NiJ9.eyJ1aWQiOiIxIn0.sig", true}, // JWT format
+		{"abc.def.ghi", true},                              // 2 dots = JWT
+		{"abc123def456", false},                            // hex API key
+		{"abc.def", false},                                 // 1 dot
+		{"abc.def.ghi.jkl", false},                         // 3 dots
 		{"", false},
 	}
 

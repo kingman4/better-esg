@@ -88,7 +88,7 @@ func (s *Server) handleSubmitToFDA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2a. Resolve FDA user_id and company_id
-	fdaUserID := req.UserEmail   // fallback: use email as user_id (legacy behavior)
+	fdaUserID := req.UserEmail // fallback: use email as user_id (legacy behavior)
 	fdaCompanyID := req.CompanyID
 
 	if fdaCompanyID == "" {

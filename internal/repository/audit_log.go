@@ -25,9 +25,9 @@ type AuditLogEntry struct {
 // InsertAuditLogParams holds the fields needed to insert an audit log entry.
 type InsertAuditLogParams struct {
 	OrgID      string
-	UserID     *string        // nil for system-initiated actions
-	Action     string         // e.g. "create_submission", "upload_file"
-	EntityType string         // e.g. "submission", "file", "webhook"
+	UserID     *string // nil for system-initiated actions
+	Action     string  // e.g. "create_submission", "upload_file"
+	EntityType string  // e.g. "submission", "file", "webhook"
 	EntityID   string
 	RequestIP  string         // from r.RemoteAddr
 	UserAgent  string         // from User-Agent header

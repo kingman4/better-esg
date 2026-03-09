@@ -115,18 +115,18 @@ func TestMigrationsCreateCorrectColumns(t *testing.T) {
 
 	// Spot-check critical columns on the submissions table
 	expectedColumns := map[string]string{
-		"id":              "uuid",
-		"org_id":          "uuid",
-		"core_id":         "character varying",
-		"fda_center":      "character varying",
-		"submission_type": "character varying",
-		"status":          "character varying",
-		"workflow_state":  "character varying",
-		"payload_id":      "character varying",
-		"file_count":      "integer",
+		"id":               "uuid",
+		"org_id":           "uuid",
+		"core_id":          "character varying",
+		"fda_center":       "character varying",
+		"submission_type":  "character varying",
+		"status":           "character varying",
+		"workflow_state":   "character varying",
+		"payload_id":       "character varying",
+		"file_count":       "integer",
 		"total_size_bytes": "bigint",
-		"created_at":      "timestamp without time zone",
-		"metadata_json":   "jsonb",
+		"created_at":       "timestamp without time zone",
+		"metadata_json":    "jsonb",
 	}
 
 	for col, expectedType := range expectedColumns {

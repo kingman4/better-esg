@@ -23,8 +23,8 @@ const (
 
 // Config holds the configuration for the FDA ESG NextGen API client.
 type Config struct {
-	ExternalBaseURL string      // e.g. https://external-api-esgng.fda.gov
-	UploadBaseURL   string      // e.g. https://upload-api-esgng.fda.gov
+	ExternalBaseURL string // e.g. https://external-api-esgng.fda.gov
+	UploadBaseURL   string // e.g. https://upload-api-esgng.fda.gov
 	ClientID        string
 	ClientSecret    string
 	Environment     Environment // prod or test

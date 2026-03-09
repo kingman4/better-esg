@@ -108,14 +108,14 @@ func (s *Server) handleGetStatus(w http.ResponseWriter, r *http.Request) {
 
 // storedAckResponse is the JSON response for a locally stored acknowledgement.
 type storedAckResponse struct {
-	ID               string         `json:"id"`
-	FDAAckID         string         `json:"fda_ack_id,omitempty"`
-	AckType          string         `json:"ack_type"`
-	Status           string         `json:"status"`
-	RawMessage       string         `json:"raw_message,omitempty"`
-	ParsedData       map[string]any `json:"parsed_data,omitempty"`
-	ESGNGCode        string         `json:"esgng_code,omitempty"`
-	ReceivedAt       string         `json:"received_at"`
+	ID         string         `json:"id"`
+	FDAAckID   string         `json:"fda_ack_id,omitempty"`
+	AckType    string         `json:"ack_type"`
+	Status     string         `json:"status"`
+	RawMessage string         `json:"raw_message,omitempty"`
+	ParsedData map[string]any `json:"parsed_data,omitempty"`
+	ESGNGCode  string         `json:"esgng_code,omitempty"`
+	ReceivedAt string         `json:"received_at"`
 }
 
 // handleListAcknowledgements handles GET /api/v1/submissions/{id}/acknowledgements.
@@ -249,4 +249,3 @@ func WorkflowDisplayLabel(state string) string {
 		return state
 	}
 }
-

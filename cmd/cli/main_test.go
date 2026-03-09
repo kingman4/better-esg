@@ -478,8 +478,8 @@ func TestRunStatus(t *testing.T) {
 	_, cfg := newMockAPI(t, func(r *http.Request) (int, any) {
 		gotPath = r.URL.Path
 		return 200, map[string]string{
-			"submission_id": "abc-123",
-			"fda_status":    "PROCESSING",
+			"submission_id":  "abc-123",
+			"fda_status":     "PROCESSING",
 			"workflow_state": "PROCESSING",
 		}
 	})

@@ -105,8 +105,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 
 		s.audit(r, "login_mfa_required", "user", user.ID, map[string]any{
-			"org_slug":       req.OrgSlug,
-			"email":          req.Email,
+			"org_slug":         req.OrgSlug,
+			"email":            req.Email,
 			"mfa_setup_needed": !user.MFAEnabled && org.MFARequired,
 		})
 

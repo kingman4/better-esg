@@ -226,11 +226,11 @@ func TestTotalChunksCalculation(t *testing.T) {
 		chunkSize int
 		expected  int
 	}{
-		{10000000, 5000000, 2},   // exactly 2 chunks
-		{10000001, 5000000, 3},   // 2 full + 1 partial
-		{5000000, 5000000, 1},    // exactly 1 chunk
-		{1, 1048576, 1},          // tiny file, 1 chunk
-		{12000000, 5000000, 3},   // 5+5+2
+		{10000000, 5000000, 2}, // exactly 2 chunks
+		{10000001, 5000000, 3}, // 2 full + 1 partial
+		{5000000, 5000000, 1},  // exactly 1 chunk
+		{1, 1048576, 1},        // tiny file, 1 chunk
+		{12000000, 5000000, 3}, // 5+5+2
 	}
 
 	for _, tt := range tests {
