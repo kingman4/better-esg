@@ -242,7 +242,7 @@ func TestCreateSubmission_Success(t *testing.T) {
 
 	body := map[string]any{
 		"fda_center":      "CDER",
-		"submission_type": "ANDA",
+		"submission_type": "ECTD",
 		"submission_name": "Test Drug Application",
 		"file_count":      3,
 		"description":     "Phase 3 data",
@@ -272,7 +272,7 @@ func TestCreateSubmission_Success(t *testing.T) {
 	if resp.CreatedBy != userID {
 		t.Errorf("expected created_by %q (from auth), got %q", userID, resp.CreatedBy)
 	}
-	if resp.SubmissionType != "ANDA" {
+	if resp.SubmissionType != "ECTD" {
 		t.Errorf("expected submission_type 'ANDA', got %q", resp.SubmissionType)
 	}
 	if resp.Status != "draft" {
